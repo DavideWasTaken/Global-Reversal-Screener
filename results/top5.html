@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stock Finder · Top 5</title>
+<style>
+:root{--bg:#081018;--card:#101b26;--line:#213244;--text:#edf5fb;--muted:#8ca1b4;--green:#34d399;--red:#fb7185;}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 15% 0,#133046 0,transparent 34%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
+main{max-width:1180px;margin:auto;padding:54px 24px 80px} header{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:end;margin-bottom:30px}
+.eyebrow{color:#7dd3fc;text-transform:uppercase;letter-spacing:.16em;font-size:12px;font-weight:800} h1{font-size:clamp(34px,6vw,68px);line-height:.98;margin:10px 0 14px;letter-spacing:-.055em;max-width:760px} header p{color:var(--muted);max-width:720px;margin:0}
+.summary{display:grid;grid-template-columns:repeat(5,minmax(95px,1fr));background:#0c1721;border:1px solid var(--line);border-radius:18px;padding:16px;gap:18px} .summary div{display:flex;flex-direction:column} .summary strong{font-size:24px} .summary small,.metrics small,.fair-values small,.total small{color:var(--muted)}
+.method{border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin:20px 0 24px;color:#b8c8d6;background:#0b151f} .method b{color:#fff}
+.stock-card{position:relative;display:grid;grid-template-columns:52px minmax(230px,1.2fr) minmax(390px,2fr) 90px;grid-template-areas:'rank identity metrics total' 'rank fair fair total' 'rank scores scores total';gap:20px 24px;padding:24px;margin:14px 0;background:linear-gradient(135deg,rgba(18,32,45,.98),rgba(11,22,32,.98));border:1px solid var(--line);border-radius:22px;box-shadow:0 18px 55px rgba(0,0,0,.18)}
+.rank{grid-area:rank;font-size:18px;color:#7dd3fc;font-weight:800;padding-top:6px} .identity{grid-area:identity} .identity h2{font-size:19px;margin:8px 0 2px} .identity p{color:var(--muted);margin:0} .symbol{font-size:25px;font-weight:900;letter-spacing:-.03em} .country{font-size:11px;border:1px solid #38516a;border-radius:999px;padding:3px 7px;margin-left:7px;color:#b6c7d6}
+.warning{margin-top:9px;color:#fbbf24;font-size:11px;max-width:260px}
+.total{grid-area:total;display:flex;flex-direction:column;align-items:flex-end} .total strong{font-size:36px;color:#fff} .metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(3,1fr);gap:14px} .metrics div{display:flex;flex-direction:column;padding:9px 12px;border-left:1px solid var(--line)} .metrics strong{font-size:16px} .positive{color:var(--green)!important} .negative{color:var(--red)!important}
+.fair-values{grid-area:fair;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:12px;border:1px solid #294158;border-radius:14px;background:#0a151f} .fair-values div{display:flex;flex-direction:column} .fair-values strong{font-size:15px}
+.score-grid{grid-area:scores;display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:2px} .score-grid>div{display:grid;grid-template-columns:1fr auto;align-items:center;gap:7px;color:#aebfcd;font-size:12px} .score-grid b{color:#eaf2f8} .bar{grid-column:1/-1;height:5px;background:#22313f;border-radius:99px;overflow:hidden} .bar span{display:block;height:100%;border-radius:99px}
+.foot{margin:28px 4px;color:#768b9e;font-size:12px} .empty{padding:30px;border:1px dashed #3b5063;border-radius:18px;color:#b6c7d6}
+@media(max-width:900px){header{grid-template-columns:1fr} .stock-card{grid-template-columns:44px 1fr 72px;grid-template-areas:'rank identity total' 'metrics metrics metrics' 'fair fair fair' 'scores scores scores'} .metrics{grid-template-columns:repeat(2,1fr)} .summary{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){main{padding:34px 15px} .summary{grid-template-columns:1fr 1fr} .stock-card{padding:18px;gap:14px} .score-grid,.fair-values{grid-template-columns:1fr 1fr}}
+</style></head><body><main>
+<header><div><div class="eyebrow">Global contrarian value & quality screener</div><h1>Stock Finder<br>Top 5</h1><p>Prezzo in discesa, FCF in crescita, utile positivo, divergenza OBV 3D, dimensione minima e valutazione multi-metodo entro tolleranza.</p></div>
+<div class="summary"><div><small>Universo</small><strong>3,787</strong></div><div><small>Divergenze</small><strong>87</strong></div><div><small>Qualità</small><strong>17</strong></div><div><small>≥ $10B</small><strong>10</strong></div><div><small>Valutazione OK</small><strong>1</strong></div></div></header>
+<div class="method"><b>Filtri rigidi:</b> market cap ≥ $10.0B, almeno 2 modelli validi e 2 conferme. Ogni metodo conferma se il titolo è sottovalutato oppure se prezzo / fair value − 1 ≤ 15%. <b>Score:</b> 20% discesa · 25% FCF · 15% redditività · 20% OBV · 20% valutazione.</div>
+
+            <article class="stock-card">
+              <div class="rank">#1</div>
+              <div class="identity">
+                <div><span class="symbol">VICI</span>
+                <span class="country">US</span></div>
+                <h2>VICI Properties Inc</h2>
+                <p>Real Estate</p><div class="warning">⚠ Verificare anche NAV e FFO/AFFO.</div>
+              </div>
+              <div class="total"><small>Score</small><strong>100.0</strong></div>
+              <div class="metrics">
+                <div><small>Prezzo</small><strong>26.51</strong></div>
+                <div><small>Rendimento 3 mesi</small><strong class="negative">-7.0%</strong></div>
+                <div><small>FCF TTM</small><strong>2.64B</strong></div>
+                <div><small>Crescita FCF</small><strong class="positive">+3.5%</strong></div>
+                <div><small>Margine netto TTM</small><strong>+67.5%</strong></div>
+                <div><small>Market cap</small><strong>29.19B USD</strong></div>
+                <div><small>Fair value consensus</small><strong class="positive">33.09</strong></div>
+                <div><small>Fair value vs prezzo</small><strong class="positive">+24.8%</strong></div>
+                <div><small>OBV 3D</small><strong class="positive">swing 3D confermato</strong></div>
+              </div>
+              <div class="fair-values">
+                <div><small>DCF (FCFE)</small><strong>35.03</strong></div>
+                <div><small>Peter Lynch</small><strong>12.56</strong></div>
+                <div><small>EV / Sales storico</small><strong>33.09</strong></div>
+                <div><small>Metodi entro soglia</small><strong>2/3</strong></div>
+              </div>
+              <div class="score-grid">
+                <div><span>Discesa</span><b>100</b><div class="bar"><span style="width:100.0%;background:#7dd3fc"></span></div></div>
+                <div><span>FCF</span><b>100</b><div class="bar"><span style="width:100.0%;background:#34d399"></span></div></div>
+                <div><span>Profitto</span><b>100</b><div class="bar"><span style="width:100.0%;background:#fbbf24"></span></div></div>
+                <div><span>OBV</span><b>100</b><div class="bar"><span style="width:100.0%;background:#c084fc"></span></div></div>
+                <div><span>Valutazione</span><b>100</b><div class="bar"><span style="width:100.0%;background:#fb7185"></span></div></div>
+              </div>
+            </article>
+            
+<div class="foot">Generato 2026-08-23 19:57 UTC · Universo: Vanguard FTSE All-World UCITS ETF holdings · 1,878 dati mancanti/errori. Consensus = mediana di DCF FCFE, Peter Lynch semplificato ed EV/Sales storico; la media aritmetica resta nel CSV/JSON per confronto col riferimento. “Fair value vs prezzo” positivo indica sottovalutazione, negativo indica sopravvalutazione. Stime sensibili a crescita, tasso di sconto, valuta e multipli storici. Screening quantitativo, non raccomandazione finanziaria.</div>
+</main></body></html>

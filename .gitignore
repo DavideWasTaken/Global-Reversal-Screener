@@ -1,0 +1,15 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.env
+.env.*
+!.env.example
+
+results/.cache/
+results/preliminary.json
+
+.DS_Store
+Thumbs.db
