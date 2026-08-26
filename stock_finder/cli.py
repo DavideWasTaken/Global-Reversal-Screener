@@ -30,7 +30,7 @@ def log(message: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="stock-finder",
-        description="Global stock finder: downtrend + rising FCF + profit + 3-session OBV divergence.",
+        description="Global stock finder: correction + support + rising FCF + profit + 3D OBV divergence.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
     universe = sub.add_parser("universe", help="Scarica e salva l'universo globale")
@@ -68,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--min-valuation-confirmations", type=int, default=2)
     scan.add_argument("--dcf-discount-rate", type=float, default=0.10)
     scan.add_argument("--dcf-terminal-growth", type=float, default=0.025)
+    scan.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="Non effettua richieste di rete; usa solo cache OHLCV v3 esatte fino a 24 ore",
+    )
     return parser
 
 
@@ -116,7 +121,16 @@ def run_scan(args: argparse.Namespace) -> int:
     if preliminary_checkpoint.exists() and time.time() - preliminary_checkpoint.stat().st_mtime < 12 * 3600:
         try:
             candidate = json.loads(preliminary_checkpoint.read_text(encoding="utf-8"))
-            if candidate.get("universe_fingerprint") == universe_fingerprint:
+            checkpoint_filter = candidate.get("preliminary_filter_version")
+            if checkpoint_filter is None and candidate.get("technical_filter_version") in {
+                "support_momentum_v2",
+                "support_momentum_v3",
+            }:
+                checkpoint_filter = "correction_v1"
+            if (
+                candidate.get("universe_fingerprint") == universe_fingerprint
+                and checkpoint_filter == "correction_v1"
+            ):
                 checkpoint = candidate
         except Exception:
             checkpoint = None
@@ -139,6 +153,8 @@ def run_scan(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "universe_fingerprint": universe_fingerprint,
+                    "preliminary_filter_version": "correction_v1",
+                    "technical_filter_version": "support_momentum_v3",
                     "symbols": sorted(preliminary),
                     "close_series_count": close_series_count,
                     "spark_errors": spark_errors,
@@ -148,7 +164,7 @@ def run_scan(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
     log(
-        f"Pre-filtro discesa: {len(preliminary):,} titoli su "
+        f"Pre-filtro correzione: {len(preliminary):,} titoli su "
         f"{close_series_count:,} serie analizzabili"
     )
     recent_chart_errors = {}
@@ -172,7 +188,13 @@ def run_scan(args: argparse.Namespace) -> int:
             f"Salto {len(recent_chart_errors):,} errori chart già verificati nelle "
             "ultime 12 ore"
         )
-    prices, chart_errors = provider.download_prices(price_symbols, progress=log)
+    if args.cache_only:
+        log("Modalità cache-only: nessuna richiesta prezzo di rete…")
+        prices, chart_errors = provider.load_cached_prices(
+            price_symbols, progress=log
+        )
+    else:
+        prices, chart_errors = provider.download_prices(price_symbols, progress=log)
     chart_errors = {**recent_chart_errors, **chart_errors}
     price_errors = {**spark_errors, **chart_errors}
     technical = {}
@@ -189,14 +211,13 @@ def run_scan(args: argparse.Namespace) -> int:
     low_refresh = [
         symbol
         for symbol, metrics in technical.items()
-        if metrics.trend_pass
-        and metrics.obv_swing_setup
+        if metrics.correction_pass
         and prices[symbol].attrs.get("low_is_proxy", False)
         and symbol not in recent_swing_errors
     ]
-    if low_refresh:
+    if low_refresh and not args.cache_only:
         log(
-            f"Confermo i low OHLC per {len(low_refresh):,} potenziali swing 3D…"
+            f"Confermo High/Low OHLC per {len(low_refresh):,} potenziali setup su supporto…"
         )
         exact_prices, refresh_errors = provider.download_prices(
             low_refresh, progress=log, refresh=True
@@ -212,7 +233,10 @@ def run_scan(args: argparse.Namespace) -> int:
     technical_pass = {
         symbol: metrics
         for symbol, metrics in technical.items()
-        if metrics.trend_pass
+        if metrics.correction_pass
+        and metrics.support_pass
+        and metrics.momentum_pass
+        and not prices[symbol].attrs.get("low_is_proxy", False)
         and (
             metrics.obv_slope_3d_z > 0
             or (
@@ -222,7 +246,7 @@ def run_scan(args: argparse.Namespace) -> int:
         )
     }
     log(
-        f"Filtro tecnico: {len(technical_pass):,} divergenze valide su "
+        f"Filtro tecnico: {len(technical_pass):,} setup supporto + momentum + OBV validi su "
         f"{len(technical):,} serie analizzabili"
     )
 
@@ -315,6 +339,10 @@ def run_scan(args: argparse.Namespace) -> int:
         universe_source=source,
         min_market_cap_usd=args.min_market_cap_usd,
         max_overvaluation=args.max_overvaluation,
+        preliminary_count=len(preliminary),
+        price_series_count=len(prices),
+        technical_metrics_count=len(technical),
+        cache_only=args.cache_only,
     )
     diagnostics = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -328,6 +356,8 @@ def run_scan(args: argparse.Namespace) -> int:
         "size_pass_count": size_count,
         "valuation_pass_count": valuation_count,
         "eligible_count": len(scored),
+        "data_error_count": len(set(price_errors) | set(fundamental_errors))
+        + len(fx_errors),
         "settings": {
             "min_market_cap_usd": args.min_market_cap_usd,
             "max_overvaluation": args.max_overvaluation,
@@ -335,6 +365,8 @@ def run_scan(args: argparse.Namespace) -> int:
             "min_valuation_confirmations": args.min_valuation_confirmations,
             "dcf_discount_rate": args.dcf_discount_rate,
             "dcf_terminal_growth": args.dcf_terminal_growth,
+            "technical_filter_version": "support_momentum_v3",
+            "cache_only": args.cache_only,
         },
         "price_errors": price_errors,
         "fundamental_errors": fundamental_errors,
@@ -352,6 +384,15 @@ def run_scan(args: argparse.Namespace) -> int:
             "name",
             "total_score",
             "return_3m",
+            "drawdown_3m",
+            "support_level",
+            "support_distance_atr",
+            "support_kind",
+            "roc5",
+            "rsi14",
+            "macd_histogram",
+            "momentum_confirmations",
+            "momentum_signal_age",
             "fcf_growth",
             "net_margin_ttm",
             "obv_slope_3d_z",

@@ -59,7 +59,7 @@ class YahooFinanceProvider:
         readable = re.sub(r"[^A-Za-z0-9._-]+", "_", symbol)[:40]
         digest = hashlib.sha1(symbol.encode()).hexdigest()[:10]
         safe_period = re.sub(r"[^A-Za-z0-9._-]+", "_", period)
-        return self.cache_dir / f"price_v2_{safe_period}_{readable}_{digest}.csv"
+        return self.cache_dir / f"price_v3_{safe_period}_{readable}_{digest}.csv"
 
     def _price_meta_cache_path(self, symbol: str, period: str) -> Path | None:
         path = self._price_cache_path(symbol, period)
@@ -79,8 +79,8 @@ class YahooFinanceProvider:
         if path and path.exists() and time.time() - path.stat().st_mtime <= max_age_hours * 3600:
             try:
                 frame = pd.read_csv(path, index_col=0, parse_dates=True)
-                if {"Low", "Close", "Volume"}.issubset(frame.columns) and not frame.empty:
-                    frame = frame[["Low", "Close", "Volume"]]
+                if {"High", "Low", "Close", "Volume"}.issubset(frame.columns) and not frame.empty:
+                    frame = frame[["High", "Low", "Close", "Volume"]]
                     meta_path = self._price_meta_cache_path(symbol, period)
                     if meta_path and meta_path.exists():
                         frame.attrs.update(json.loads(meta_path.read_text(encoding="utf-8")))
@@ -158,7 +158,10 @@ class YahooFinanceProvider:
         use_query1 = (sum(map(ord, symbol)) % 2 == 1) ^ alternate_host
         if use_query1:
             url = url.replace("query2.finance.yahoo.com", "query1.finance.yahoo.com")
-        payload = self._get_json(url, timeout=18, attempts=2)
+        # The outer download loop already performs a second pass on the
+        # alternate Yahoo host.  Keep each host attempt short so one throttled
+        # symbol cannot stall (or terminate) an otherwise recoverable scan.
+        payload = self._get_json(url, timeout=8, attempts=1)
         chart = payload.get("chart") or {}
         if chart.get("error"):
             raise ValueError(chart["error"])
@@ -170,13 +173,17 @@ class YahooFinanceProvider:
         indicators = result.get("indicators") or {}
         quote_data = (indicators.get("quote") or [{}])[0]
         close_data = quote_data.get("close") or []
+        high_data = quote_data.get("high") or close_data
         low_data = quote_data.get("low") or close_data
         volume_data = quote_data.get("volume") or []
-        row_count = min(len(timestamps), len(low_data), len(close_data), len(volume_data))
+        row_count = min(
+            len(timestamps), len(high_data), len(low_data), len(close_data), len(volume_data)
+        )
         if row_count == 0:
             raise ValueError("serie prezzo vuota")
         frame = pd.DataFrame(
             {
+                "High": high_data[:row_count],
                 "Low": low_data[:row_count],
                 "Close": close_data[:row_count],
                 "Volume": volume_data[:row_count],
@@ -307,7 +314,11 @@ class YahooFinanceProvider:
             price_batch_size = min(self.batch_size, 20)
             for start in range(0, len(pass_symbols), price_batch_size):
                 batch = pass_symbols[start : start + price_batch_size]
-                with ThreadPoolExecutor(max_workers=min(self.workers, 2)) as executor:
+                # Requests are already split deterministically across Yahoo's two
+                # chart hosts.  Honour the configured bounded concurrency here;
+                # limiting this stage to two workers made a 1,000-symbol refresh
+                # unnecessarily take more than an hour.
+                with ThreadPoolExecutor(max_workers=min(self.workers, 6)) as executor:
                     futures = {
                         executor.submit(
                             self._fetch_one_price,
@@ -340,6 +351,45 @@ class YahooFinanceProvider:
         if errors:
             time.sleep(15.0)
             errors = run_pass(list(errors), alternate_host=True, retry=True)
+        return prices, errors
+
+    def load_cached_prices(
+        self,
+        symbols: Iterable[str],
+        period: str = "9mo",
+        max_age_hours: int = 24,
+        progress: Callable[[str], None] | None = None,
+    ) -> tuple[dict[str, pd.DataFrame], dict[str, str]]:
+        """Load only exact v3 OHLCV caches without making network requests."""
+
+        symbols = list(dict.fromkeys(symbols))
+        prices: dict[str, pd.DataFrame] = {}
+        errors: dict[str, str] = {}
+        for position, symbol in enumerate(symbols, start=1):
+            path = self._price_cache_path(symbol, period)
+            frame = None
+            if (
+                path
+                and path.exists()
+                and time.time() - path.stat().st_mtime <= max_age_hours * 3600
+            ):
+                try:
+                    candidate = pd.read_csv(path, index_col=0, parse_dates=True)
+                    if {"High", "Low", "Close", "Volume"}.issubset(candidate.columns):
+                        frame = candidate[["High", "Low", "Close", "Volume"]]
+                        meta_path = self._price_meta_cache_path(symbol, period)
+                        if meta_path and meta_path.exists():
+                            frame.attrs.update(
+                                json.loads(meta_path.read_text(encoding="utf-8"))
+                            )
+                except Exception:
+                    frame = None
+            if frame is None or frame.empty:
+                errors[symbol] = "cache_miss: exact OHLCV v3 unavailable"
+            else:
+                prices[symbol] = frame
+            if progress and (position % 100 == 0 or position == len(symbols)):
+                progress(f"Cache OHLCV {position}/{len(symbols)}")
         return prices, errors
 
     def _fundamental_cache_path(self, symbol: str) -> Path | None:

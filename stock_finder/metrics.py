@@ -21,6 +21,38 @@ class TechnicalMetrics:
     swing_obv_delta: float | None
     obv_swing_setup: bool
     obv_swing_3d_pass: bool
+    atr20: float
+    drawdown_3m: float
+    support_level: float | None
+    support_distance_pct: float | None
+    support_distance_atr: float | None
+    support_touches: int
+    support_kind: str | None
+    support_signal: float
+    correction_pass: bool
+    support_pass: bool
+    ema10: float
+    roc5: float
+    rsi14: float
+    macd_line: float
+    macd_signal_line: float
+    macd_histogram: float
+    prior_high_5d: float
+    price_breakout_5d: float
+    volume_ratio20: float
+    close_location: float
+    rsi_failure_swing_low1: float | None
+    rsi_failure_swing_peak: float | None
+    rsi_failure_swing_low2: float | None
+    momentum_price_breakout: bool
+    momentum_rsi_failure_swing: bool
+    momentum_macd_inflection: bool
+    momentum_confirmations: int
+    momentum_signal_age: int | None
+    momentum_state: str
+    momentum_signal: float
+    momentum_pass: bool
+    bullish_regime_pass: bool
     downtrend_signal: float
     obv_divergence_signal: float
     trend_pass: bool
@@ -202,7 +234,13 @@ def passes_preliminary_downtrend(
     trend_sessions: int = 63,
     price_bars: int = 20,
 ) -> bool:
-    """Cheap price-only gate used before requesting per-symbol volume history."""
+    """Cheap, deliberately broad correction gate before OHLCV is requested.
+
+    The exact support test needs lows (and preferably highs), so the close-only
+    pre-filter must not require a continuous three-month downtrend.  A symbol is
+    retained when it has either lost 5% over 63 sessions or sits at least 12%
+    below its 63-session high.
+    """
 
     if "Close" not in frame:
         return False
@@ -213,13 +251,340 @@ def passes_preliminary_downtrend(
     )
     if len(close) < max(126, trend_sessions, price_bars * 3) or (close <= 0).any():
         return False
-    daily_log_slope = _slope(np.log(close.iloc[-trend_sessions:].to_numpy()))
-    annualized_slope = float(np.expm1(daily_log_slope * 252))
     return_3m = float(close.iloc[-1] / close.iloc[-64] - 1)
-    complete_rows = (len(close) // 3) * 3
-    three_session_close = close.iloc[-complete_rows:].to_numpy().reshape(-1, 3)[:, -1]
-    price_slope_z = _slope(_zscore(three_session_close[-price_bars:]))
-    return bool(return_3m < 0 and annualized_slope < 0 and price_slope_z < 0)
+    drawdown_3m = float(close.iloc[-1] / close.iloc[-trend_sessions:].max() - 1)
+    return bool(return_3m <= -0.05 or drawdown_3m <= -0.12)
+
+
+def _average_true_range(frame: pd.DataFrame, periods: int = 20) -> float:
+    close = frame["Close"].astype(float)
+    low = frame.get("Low", close).astype(float)
+    high = frame.get("High", pd.concat([close, low], axis=1).max(axis=1)).astype(float)
+    previous_close = close.shift(1)
+    true_range = pd.concat(
+        [high - low, (high - previous_close).abs(), (low - previous_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    value = float(true_range.tail(periods).mean())
+    return value if np.isfinite(value) and value > 0 else float("nan")
+
+
+def _support_metrics(
+    frame: pd.DataFrame,
+    atr20: float,
+    pivot_span: int = 5,
+) -> tuple[float | None, float | None, float | None, int, str | None, float, bool]:
+    """Return the nearest valid historical support or confirmed emerging base.
+
+    Historical supports need two pivot lows at least 15 sessions apart.  The
+    emerging-base branch captures a fresh floor without pretending it already
+    has a long history: at least three tests in the preceding ten sessions and
+    a bullish reclaim are required.  All calculations end at the supplied
+    frame, so the function is safe for point-in-time tests.
+    """
+
+    if not np.isfinite(atr20) or atr20 <= 0 or len(frame) < 30:
+        return None, None, None, 0, None, 0.0, False
+    close = frame["Close"].astype(float)
+    low = frame.get("Low", close).astype(float)
+    high = frame.get("High", pd.concat([close, low], axis=1).max(axis=1)).astype(float)
+    current = float(close.iloc[-1])
+    band = max(current * 0.02, atr20 * 0.75)
+
+    # A newly formed floor: repeated tests, followed by a close above the zone
+    # and above the preceding session's high.  CRM on 2026-06-26 is this case.
+    recent_low = low.iloc[-11:-1]
+    if len(recent_low) >= 6:
+        floor = float(recent_low.min())
+        touched = recent_low[recent_low <= floor + band]
+        touch_span = (
+            int(recent_low.index.get_loc(touched.index[-1]))
+            - int(recent_low.index.get_loc(touched.index[0]))
+            if len(touched) >= 2
+            else 0
+        )
+        emerging_level = float(touched.median()) if len(touched) else floor
+        emerging_reclaim = bool(
+            len(touched) >= 3
+            and touch_span >= 3
+            and current > floor + band
+            and current <= floor + 1.5 * atr20
+            and current > float(high.iloc[-2])
+            and current > float(close.iloc[-2])
+        )
+        if emerging_reclaim:
+            distance_pct = float(current / emerging_level - 1.0)
+            distance_atr = float((current - emerging_level) / atr20)
+            signal = float(
+                np.clip(1.0 - abs(distance_atr) / 1.5, 0.0, 1.0)
+                + 0.5 * min(len(touched) / 4.0, 1.0)
+                + 0.75
+            )
+            return (
+                emerging_level,
+                distance_pct,
+                distance_atr,
+                int(len(touched)),
+                "emerging_reclaim",
+                signal,
+                True,
+            )
+
+    # Established horizontal levels from confirmed pivot lows.  Current and
+    # last five rows are excluded from pivot confirmation to avoid look-ahead.
+    pivots: list[tuple[int, float]] = []
+    for position in range(pivot_span, len(low) - pivot_span):
+        value = float(low.iloc[position])
+        if value <= float(low.iloc[position - pivot_span : position + pivot_span + 1].min()):
+            pivots.append((position, value))
+    clusters: list[list[tuple[int, float]]] = []
+    for pivot in pivots:
+        matching = next(
+            (
+                cluster
+                for cluster in clusters
+                if abs(pivot[1] - float(np.median([value for _, value in cluster]))) <= band
+            ),
+            None,
+        )
+        if matching is None:
+            clusters.append([pivot])
+        else:
+            matching.append(pivot)
+
+    candidates: list[tuple[float, list[tuple[int, float]]]] = []
+    for cluster in clusters:
+        positions = [position for position, _ in cluster]
+        if len(cluster) >= 2 and max(positions) - min(positions) >= 15:
+            candidates.append((float(np.median([value for _, value in cluster])), cluster))
+    candidates.sort(key=lambda item: abs(current - item[0]))
+    for level, cluster in candidates:
+        distance_atr = float((current - level) / atr20)
+        broken_closes = int((close.tail(5) < level - atr20).sum())
+        if -0.5 <= distance_atr <= 1.0 and broken_closes < 2:
+            distance_pct = float(current / level - 1.0)
+            signal = float(
+                np.clip(1.0 - abs(distance_atr), 0.0, 1.0)
+                + 0.5 * min(len(cluster) / 4.0, 1.0)
+            )
+            return level, distance_pct, distance_atr, len(cluster), "established", signal, True
+    return None, None, None, 0, None, 0.0, False
+
+
+def _wilder_rsi(close: pd.Series, periods: int = 14) -> pd.Series:
+    """Wilder RSI with the original SMA seed and recursive smoothing."""
+
+    delta = close.diff()
+    gains = delta.clip(lower=0.0).fillna(0.0)
+    losses = (-delta.clip(upper=0.0)).fillna(0.0)
+    average_gain = pd.Series(np.nan, index=close.index, dtype=float)
+    average_loss = pd.Series(np.nan, index=close.index, dtype=float)
+    if len(close) <= periods:
+        return average_gain
+    average_gain.iloc[periods] = float(gains.iloc[1 : periods + 1].mean())
+    average_loss.iloc[periods] = float(losses.iloc[1 : periods + 1].mean())
+    for position in range(periods + 1, len(close)):
+        average_gain.iloc[position] = (
+            average_gain.iloc[position - 1] * (periods - 1) + gains.iloc[position]
+        ) / periods
+        average_loss.iloc[position] = (
+            average_loss.iloc[position - 1] * (periods - 1) + losses.iloc[position]
+        ) / periods
+    relative_strength = average_gain / average_loss.replace(0.0, np.nan)
+    rsi = 100.0 - 100.0 / (1.0 + relative_strength)
+    rsi = rsi.mask((average_loss == 0.0) & (average_gain > 0.0), 100.0)
+    return rsi.mask((average_loss == 0.0) & (average_gain == 0.0), 50.0)
+
+
+def _rsi_bullish_failure_swing(
+    rsi: pd.Series,
+    lookback: int = 15,
+) -> tuple[bool, float | None, float | None, float | None]:
+    """Detect a completed bottom failure swing on the final observation.
+
+    Textbook causal sequence: RSI low at/below 30, rebound above 30, a higher
+    second low that remains above 30, then a cross above the rebound peak.
+    """
+
+    values = rsi.to_numpy(dtype=float)
+    end = len(values) - 1
+    start = max(1, end - lookback)
+    if end < 5 or not np.isfinite(values[end]):
+        return False, None, None, None
+    for low2 in range(end - 1, start + 2, -1):
+        if not (
+            np.isfinite(values[low2 - 1 : low2 + 2]).all()
+            and values[low2] <= values[low2 - 1]
+            and values[low2] < values[low2 + 1]
+            and values[low2] > 30.0
+        ):
+            continue
+        for peak in range(low2 - 1, start + 1, -1):
+            if not (
+                np.isfinite(values[peak - 1 : peak + 2]).all()
+                and values[peak] >= values[peak - 1]
+                and values[peak] > values[peak + 1]
+                and values[peak] > 30.0
+            ):
+                continue
+            for low1 in range(peak - 1, start - 1, -1):
+                if not (
+                    np.isfinite(values[low1 - 1 : low1 + 2]).all()
+                    and values[low1] <= 30.0
+                    and values[low1] <= values[low1 - 1]
+                    and values[low1] < values[low1 + 1]
+                    and values[low2] > values[low1]
+                    and values[end - 1] <= values[peak]
+                    and values[end] > values[peak]
+                ):
+                    continue
+                if values[peak] >= float(np.nanmax(values[low1 + 1 : low2])):
+                    return (
+                        True,
+                        float(values[low1]),
+                        float(values[peak]),
+                        float(values[low2]),
+                    )
+    return False, None, None, None
+
+
+def _bullish_momentum_metrics(
+    frame: pd.DataFrame,
+    atr20: float,
+) -> tuple:
+    """Detect an early bullish turn without calling it a mature bull regime.
+
+    The gate requires a completed RSI(14) bottom failure swing and a close
+    above the previous five-session high. A separate strict regime flag
+    requires RSI >= 50, MACD above its signal and a rising EMA20.
+    """
+
+    close = frame["Close"].astype(float)
+    high = frame.get("High", close).astype(float)
+    low = frame.get("Low", close).astype(float)
+    volume = frame["Volume"].astype(float)
+    ema10_series = close.ewm(span=10, adjust=False).mean()
+    ema20_series = close.ewm(span=20, adjust=False).mean()
+    roc5_series = close.pct_change(5)
+    rsi = _wilder_rsi(close, 14)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    histogram = macd - signal
+
+    ema10 = float(ema10_series.iloc[-1])
+    roc5 = float(roc5_series.iloc[-1])
+    rsi14 = float(rsi.iloc[-1])
+    macd_line = float(macd.iloc[-1])
+    macd_signal_line = float(signal.iloc[-1])
+    macd_histogram = float(histogram.iloc[-1])
+
+    prior_high_5d = float(high.iloc[-6:-1].max())
+    price_breakout_5d = float(close.iloc[-1] / prior_high_5d - 1.0)
+    volume_ratio20 = float(
+        volume.iloc[-1] / max(float(volume.iloc[-21:-1].median()), 1.0)
+    )
+    daily_range = float(high.iloc[-1] - low.iloc[-1])
+    close_location = float(
+        (close.iloc[-1] - low.iloc[-1]) / daily_range if daily_range > 0 else 0.5
+    )
+    failure_swing = False
+    failure_low1 = failure_peak = failure_low2 = None
+    price_breakout = False
+    signal_age = None
+    # Keep a completed signal alive for up to five sessions, provided price
+    # remains above its breakout level and RSI above the higher second low.
+    # This lets a weekly scan observe a still-valid reversal without look-ahead.
+    end = len(close) - 1
+    for signal_position in range(end, max(0, end - 5), -1):
+        candidate_rsi = rsi.iloc[: signal_position + 1]
+        candidate_failure, low1, peak, low2 = _rsi_bullish_failure_swing(candidate_rsi)
+        breakout_level = float(high.iloc[signal_position - 5 : signal_position].max())
+        candidate_breakout = bool(close.iloc[signal_position] > breakout_level)
+        still_valid = bool(
+            close.iloc[-1] >= breakout_level
+            and low2 is not None
+            and rsi.iloc[-1] > low2
+        )
+        if candidate_failure and candidate_breakout and still_valid:
+            failure_swing = True
+            failure_low1, failure_peak, failure_low2 = low1, peak, low2
+            price_breakout = True
+            signal_age = end - signal_position
+            prior_high_5d = breakout_level
+            price_breakout_5d = float(
+                close.iloc[signal_position] / breakout_level - 1.0
+            )
+            prior_volume = max(
+                float(volume.iloc[max(0, signal_position - 20) : signal_position].median()),
+                1.0,
+            )
+            volume_ratio20 = float(volume.iloc[signal_position] / prior_volume)
+            signal_range = float(high.iloc[signal_position] - low.iloc[signal_position])
+            close_location = float(
+                (close.iloc[signal_position] - low.iloc[signal_position]) / signal_range
+                if signal_range > 0
+                else 0.5
+            )
+            break
+    macd_differences = histogram.diff().tail(3)
+    macd_inflection = bool(
+        len(macd_differences) == 3
+        and macd_differences.notna().all()
+        and (macd_differences > 0).all()
+    )
+    confirmations = int(price_breakout) + int(failure_swing)
+    momentum_pass = bool(price_breakout and failure_swing)
+    bullish_regime = bool(
+        rsi14 >= 50.0
+        and macd_line > macd_signal_line
+        and close.iloc[-1] > ema20_series.iloc[-1]
+        and ema20_series.iloc[-1] > ema20_series.iloc[-2]
+    )
+    momentum_state = (
+        "bullish_trend_established"
+        if bullish_regime
+        else "bullish_reversal_confirmed"
+        if momentum_pass
+        else "turning"
+        if macd_inflection or (rsi14 > 30.0 and float(rsi.iloc[-6:-1].min()) <= 30.0)
+        else "bearish_or_unconfirmed"
+    )
+
+    atr_scale = max(atr20 if np.isfinite(atr20) else 0.0, float(close.iloc[-1]) * 0.01)
+    histogram_improvement = float(histogram.iloc[-1] - histogram.iloc[-4])
+    momentum_signal = float(
+        float(failure_swing)
+        + np.clip(price_breakout_5d / 0.03, 0.0, 1.0)
+        + 0.35 * np.clip(volume_ratio20 / 1.5, 0.0, 1.0)
+        + 0.25 * np.clip(close_location, 0.0, 1.0)
+        + np.clip(histogram_improvement / atr_scale, 0.0, 1.0)
+    )
+    return (
+        ema10,
+        roc5,
+        rsi14,
+        macd_line,
+        macd_signal_line,
+        macd_histogram,
+        prior_high_5d,
+        price_breakout_5d,
+        volume_ratio20,
+        close_location,
+        failure_low1,
+        failure_peak,
+        failure_low2,
+        price_breakout,
+        failure_swing,
+        macd_inflection,
+        confirmations,
+        signal_age,
+        momentum_state,
+        momentum_signal,
+        momentum_pass,
+        bullish_regime,
+    )
 
 
 def on_balance_volume(close: pd.Series, volume: pd.Series) -> pd.Series:
@@ -232,7 +597,9 @@ def calculate_technical_metrics(
     trend_sessions: int = 63,
     obv_bars: int = 20,
 ) -> TechnicalMetrics | None:
-    columns = ["Close", "Volume"] + (["Low"] if "Low" in frame else [])
+    columns = ["Close", "Volume"] + [
+        column for column in ["High", "Low"] if column in frame
+    ]
     clean = frame[columns].replace([np.inf, -np.inf], np.nan).dropna(
         subset=["Close", "Volume"]
     )
@@ -247,6 +614,41 @@ def calculate_technical_metrics(
     annualized_slope = float(np.expm1(daily_log_slope * 252))
     return_3m = float(close.iloc[-1] / close.iloc[-64] - 1)
     return_6m = float(close.iloc[-1] / close.iloc[-126] - 1)
+    drawdown_3m = float(close.iloc[-1] / close.iloc[-trend_sessions:].max() - 1)
+    atr20 = _average_true_range(clean)
+    (
+        support_level,
+        support_distance_pct,
+        support_distance_atr,
+        support_touches,
+        support_kind,
+        support_signal,
+        support_pass,
+    ) = _support_metrics(clean, atr20)
+    (
+        ema10,
+        roc5,
+        rsi14,
+        macd_line,
+        macd_signal_line,
+        macd_histogram,
+        prior_high_5d,
+        price_breakout_5d,
+        volume_ratio20,
+        close_location,
+        rsi_failure_swing_low1,
+        rsi_failure_swing_peak,
+        rsi_failure_swing_low2,
+        momentum_price_breakout,
+        momentum_rsi_failure_swing,
+        momentum_macd_inflection,
+        momentum_confirmations,
+        momentum_signal_age,
+        momentum_state,
+        momentum_signal,
+        momentum_pass,
+        bullish_regime_pass,
+    ) = _bullish_momentum_metrics(clean, atr20)
 
     bars = three_calendar_day_bars(clean).tail(obv_bars)
     if len(bars) < obv_bars:
@@ -274,6 +676,7 @@ def calculate_technical_metrics(
         swing_pass = bool(lower["Low"] < prior["Low"] and swing_setup)
 
     trend_pass = bool(return_3m < 0 and annualized_slope < 0 and price_slope_z < 0)
+    correction_pass = bool(return_3m <= -0.05 or drawdown_3m <= -0.12)
     obv_pass = bool(obv_slope_z > 0 or swing_pass)
     downtrend_signal = float(
         0.65 * np.clip(-annualized_slope, 0, 0.75)
@@ -295,6 +698,38 @@ def calculate_technical_metrics(
         swing_obv_delta=swing_obv_delta,
         obv_swing_setup=swing_setup,
         obv_swing_3d_pass=swing_pass,
+        atr20=atr20,
+        drawdown_3m=drawdown_3m,
+        support_level=support_level,
+        support_distance_pct=support_distance_pct,
+        support_distance_atr=support_distance_atr,
+        support_touches=support_touches,
+        support_kind=support_kind,
+        support_signal=support_signal,
+        correction_pass=correction_pass,
+        support_pass=support_pass,
+        ema10=ema10,
+        roc5=roc5,
+        rsi14=rsi14,
+        macd_line=macd_line,
+        macd_signal_line=macd_signal_line,
+        macd_histogram=macd_histogram,
+        prior_high_5d=prior_high_5d,
+        price_breakout_5d=price_breakout_5d,
+        volume_ratio20=volume_ratio20,
+        close_location=close_location,
+        rsi_failure_swing_low1=rsi_failure_swing_low1,
+        rsi_failure_swing_peak=rsi_failure_swing_peak,
+        rsi_failure_swing_low2=rsi_failure_swing_low2,
+        momentum_price_breakout=momentum_price_breakout,
+        momentum_rsi_failure_swing=momentum_rsi_failure_swing,
+        momentum_macd_inflection=momentum_macd_inflection,
+        momentum_confirmations=momentum_confirmations,
+        momentum_signal_age=momentum_signal_age,
+        momentum_state=momentum_state,
+        momentum_signal=momentum_signal,
+        momentum_pass=momentum_pass,
+        bullish_regime_pass=bullish_regime_pass,
         downtrend_signal=downtrend_signal,
         obv_divergence_signal=obv_divergence_signal,
         trend_pass=trend_pass,

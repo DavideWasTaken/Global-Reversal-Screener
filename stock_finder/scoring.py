@@ -10,10 +10,12 @@ from .universe import UniverseMember
 
 
 WEIGHTS = {
-    "downtrend_score": 0.20,
+    "correction_score": 0.10,
+    "support_score": 0.15,
+    "momentum_score": 0.10,
     "fcf_score": 0.25,
-    "profit_score": 0.15,
-    "obv_score": 0.20,
+    "profit_score": 0.10,
+    "obv_score": 0.10,
     "valuation_score": 0.20,
 }
 
@@ -46,7 +48,9 @@ def score_candidates(candidates: Iterable[Candidate]) -> pd.DataFrame:
         return pd.DataFrame()
     frame = pd.DataFrame(rows)
     eligible = frame[
-        frame["trend_pass"]
+        frame["correction_pass"]
+        & frame["support_pass"]
+        & frame["momentum_pass"]
         & frame["obv_pass"]
         & frame["fcf_pass"]
         & frame["profit_pass"]
@@ -56,7 +60,9 @@ def score_candidates(candidates: Iterable[Candidate]) -> pd.DataFrame:
     if eligible.empty:
         return eligible
 
-    eligible["downtrend_score"] = _percentile(eligible["downtrend_signal"])
+    eligible["correction_score"] = _percentile(eligible["downtrend_signal"])
+    eligible["support_score"] = _percentile(eligible["support_signal"])
+    eligible["momentum_score"] = _percentile(eligible["momentum_signal"])
     eligible["fcf_score"] = _percentile(eligible["fcf_signal"])
     eligible["profit_score"] = _percentile(eligible["profit_signal"])
     eligible["obv_score"] = _percentile(eligible["obv_divergence_signal"])

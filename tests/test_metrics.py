@@ -83,6 +83,14 @@ def test_calendar_3d_swing_divergence_matches_crm_reference():
     frame = pd.read_csv(fixture, parse_dates=["Date"]).set_index("Date")
     frame.attrs["exchange_timezone"] = "America/New_York"
 
+    # The signal must not appear before the June 26 confirmation bar.
+    for cutoff in ["2026-06-23", "2026-06-24", "2026-06-25"]:
+        earlier = frame.loc[:cutoff].copy()
+        earlier.attrs.update(frame.attrs)
+        earlier_metrics = calculate_technical_metrics(earlier)
+        assert earlier_metrics is not None
+        assert not earlier_metrics.momentum_pass
+
     bars = three_calendar_day_bars(frame)
     assert list(bars.tail(3).index.strftime("%Y-%m-%d")) == [
         "2026-06-18",
@@ -92,10 +100,77 @@ def test_calendar_3d_swing_divergence_matches_crm_reference():
     metrics = calculate_technical_metrics(frame)
     assert metrics is not None
     assert metrics.trend_pass
+    assert metrics.correction_pass
+    assert metrics.support_pass
+    assert metrics.support_kind == "emerging_reclaim"
+    assert metrics.support_touches == 5
+    assert round(metrics.support_level, 2) == 149.80
+    assert round(metrics.support_distance_atr, 2) == 0.99
+    assert round(metrics.roc5, 4) == 0.0434
+    assert round(metrics.rsi14, 2) == 41.25
+    assert round(metrics.macd_histogram, 2) == -1.59
+    assert round(metrics.rsi_failure_swing_low1, 3) == 29.851
+    assert round(metrics.rsi_failure_swing_peak, 3) == 33.733
+    assert round(metrics.rsi_failure_swing_low2, 3) == 31.767
+    assert round(metrics.prior_high_5d, 2) == 157.06
+    assert round(metrics.price_breakout_5d, 4) == 0.0083
+    assert round(metrics.volume_ratio20, 2) == 1.34
+    assert round(metrics.close_location, 3) == 0.987
+    assert metrics.momentum_price_breakout
+    assert metrics.momentum_rsi_failure_swing
+    assert metrics.momentum_macd_inflection
+    assert metrics.momentum_confirmations == 2
+    assert metrics.momentum_signal_age == 0
+    assert metrics.momentum_state == "bullish_reversal_confirmed"
+    assert metrics.momentum_pass
+    assert not metrics.bullish_regime_pass
     assert metrics.obv_swing_3d_pass
     assert metrics.obv_pass
     assert round(metrics.swing_price_lower_low, 4) == -0.0232
     assert round(metrics.return_3m, 4) == -0.1469
+
+
+def test_broken_established_support_does_not_pass():
+    index = pd.bdate_range("2025-01-01", periods=150)
+    close = np.full(150, 105.0)
+    low = np.full(150, 103.0)
+    high = np.full(150, 107.0)
+    # Two well-separated reactions around 100 create a historical support.
+    for position in [55, 90]:
+        low[position] = 100.0
+        close[position] = 102.0
+    # A decisive multi-session break must invalidate it.
+    close[-8:] = np.linspace(98.0, 90.0, 8)
+    low[-8:] = close[-8:] - 2.0
+    high[-8:] = close[-8:] + 2.0
+    volume = np.full(150, 1_000_000.0)
+    frame = pd.DataFrame(
+        {"High": high, "Low": low, "Close": close, "Volume": volume},
+        index=index,
+    )
+    metrics = calculate_technical_metrics(frame)
+    assert metrics is not None
+    assert metrics.correction_pass
+    assert not metrics.support_pass
+
+
+def test_one_day_bounce_without_broad_confirmation_is_not_bullish_momentum():
+    index = pd.bdate_range("2025-01-01", periods=150)
+    close = np.linspace(130.0, 100.0, 150)
+    close[-1] = 101.0
+    frame = pd.DataFrame(
+        {
+            "High": close + 1.0,
+            "Low": close - 1.0,
+            "Close": close,
+            "Volume": np.full(150, 1_000_000.0),
+        },
+        index=index,
+    )
+    metrics = calculate_technical_metrics(frame)
+    assert metrics is not None
+    assert not metrics.momentum_pass
+    assert not metrics.bullish_regime_pass
 
 
 def test_multi_method_valuation_and_size_are_hard_gates():
