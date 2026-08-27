@@ -29,7 +29,7 @@ swing-picker = "swing_picker.cli:main"
 include = ["swing_picker*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests_swing"]
 addopts = "-q"
 
 [tool.ruff]
