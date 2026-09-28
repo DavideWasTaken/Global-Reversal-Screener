@@ -1,15 +1,35 @@
-.venv/
-.pytest_cache/
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
+dist/
+.eggs/
 
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Scanner output (default --output directory, its .cache/ data cache and
+# resume checkpoints). Use a different --output name? Add it here too.
+results/
+results-*/
+
+# Environment files
 .env
 .env.*
 !.env.example
 
-results/.cache/
-results/preliminary.json
-
+# OS / editor files
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/

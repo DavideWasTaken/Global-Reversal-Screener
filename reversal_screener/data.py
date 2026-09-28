@@ -167,7 +167,7 @@ class YahooFinanceProvider:
             raise ValueError(chart["error"])
         results = chart.get("result") or []
         if not results:
-            raise ValueError("nessuna serie prezzo")
+            raise ValueError("no price series")
         result = results[0]
         timestamps = result.get("timestamp") or []
         indicators = result.get("indicators") or {}
@@ -180,7 +180,7 @@ class YahooFinanceProvider:
             len(timestamps), len(high_data), len(low_data), len(close_data), len(volume_data)
         )
         if row_count == 0:
-            raise ValueError("serie prezzo vuota")
+            raise ValueError("empty price series")
         frame = pd.DataFrame(
             {
                 "High": high_data[:row_count],
@@ -193,7 +193,7 @@ class YahooFinanceProvider:
         frame = frame.apply(pd.to_numeric, errors="coerce").dropna()
         frame = frame[~frame.index.duplicated(keep="last")].sort_index()
         if frame.empty:
-            raise ValueError("serie prezzo senza righe valide")
+            raise ValueError("price series has no valid rows")
         meta = result.get("meta") or {}
         frame.attrs["currency"] = meta.get("currency")
         frame.attrs["exchange_timezone"] = meta.get("exchangeTimezoneName")
@@ -223,7 +223,7 @@ class YahooFinanceProvider:
         close_data = quote_data.get("close") or []
         row_count = min(len(timestamps), len(close_data))
         if row_count == 0:
-            raise ValueError("serie spark vuota")
+            raise ValueError("empty spark series")
         frame = pd.DataFrame(
             {"Close": close_data[:row_count]},
             index=pd.to_datetime(timestamps[:row_count], unit="s", utc=True),
@@ -253,14 +253,14 @@ class YahooFinanceProvider:
             responses = result.get("response") or []
             try:
                 if not symbol or not responses:
-                    raise ValueError("risposta spark assente")
+                    raise ValueError("missing spark response")
                 frames[symbol] = self._spark_result_to_frame(responses[0])
             except Exception as exc:
                 if symbol:
                     errors[symbol] = f"spark_error: {type(exc).__name__}: {exc}"
         returned = set(frames) | set(errors)
         for symbol in set(symbols) - returned:
-            errors[symbol] = "spark_error: simbolo non restituito"
+            errors[symbol] = "spark_error: symbol not returned"
         return frames, errors
 
     def download_close_history(
@@ -294,7 +294,7 @@ class YahooFinanceProvider:
                     for symbol in batch:
                         errors[symbol] = f"spark_batch_error: {type(exc).__name__}: {exc}"
                 if progress:
-                    progress(f"Pre-filtro prezzi {min(completed, len(symbols))}/{len(symbols)}")
+                    progress(f"Price pre-filter {min(completed, len(symbols))}/{len(symbols)}")
         return prices, errors
 
     def download_prices(
@@ -338,7 +338,7 @@ class YahooFinanceProvider:
                                 f"price_error: {type(exc).__name__}: {exc}"
                             )
                 if progress:
-                    prefix = "Retry prezzo+volume" if retry else "Prezzo+volume"
+                    prefix = "Retry price+volume" if retry else "Price+volume"
                     progress(
                         f"{prefix} {min(start + len(batch), len(pass_symbols))}/"
                         f"{len(pass_symbols)}"
@@ -570,7 +570,7 @@ class YahooFinanceProvider:
         )
         metrics = calculate_fundamental_metrics(cashflow, income)
         if metrics is None:
-            raise ValueError("storico trimestrale FCF/reddito insufficiente")
+            raise ValueError("insufficient quarterly FCF/income history")
 
         market_cap_item = self._latest_item(
             items, "trailingMarketCap", "quarterlyMarketCap"
@@ -645,7 +645,7 @@ class YahooFinanceProvider:
                     if progress and (
                         completed == len(pass_symbols) or completed % 5 == 0
                     ):
-                        prefix = "Retry fondamentali" if retry else "Fondamentali"
+                        prefix = "Retry fundamentals" if retry else "Fundamentals"
                         progress(f"{prefix} {completed}/{len(pass_symbols)}")
             return errors
 
@@ -684,7 +684,7 @@ class YahooFinanceProvider:
                 if inverse:
                     rate = 1.0 / rate
                 if not pd.notna(rate) or rate <= 0:
-                    raise ValueError("cambio non valido")
+                    raise ValueError("invalid exchange rate")
                 if cache_path:
                     cache_path.write_text(
                         json.dumps(
@@ -700,7 +700,7 @@ class YahooFinanceProvider:
                 return rate
             except Exception as exc:
                 last_error = exc
-        raise RuntimeError(f"cambio {currency}/USD non disponibile: {last_error}")
+        raise RuntimeError(f"{currency}/USD exchange rate unavailable: {last_error}")
 
     def download_fx_rates(
         self,
@@ -723,5 +723,5 @@ class YahooFinanceProvider:
                 except Exception as exc:
                     errors[currency] = f"fx_error: {type(exc).__name__}: {exc}"
                 if progress:
-                    progress(f"Cambi valuta {completed}/{len(requested)}")
+                    progress(f"FX rates {completed}/{len(requested)}")
         return rates, errors

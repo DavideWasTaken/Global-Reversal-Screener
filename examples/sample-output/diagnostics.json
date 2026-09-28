@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-09-28T11:12:54.544967+00:00",
+  "universe_count": 6,
+  "price_series_count": 5,
+  "technical_metrics_count": 5,
+  "technical_pass_count": 4,
+  "fundamental_metrics_count": 4,
+  "fundamental_gate_cache_count": 0,
+  "quality_pass_count": 3,
+  "size_pass_count": 2,
+  "valuation_pass_count": 1,
+  "eligible_count": 1,
+  "data_error_count": 0,
+  "settings": {
+    "min_market_cap_usd": 10000000000.0,
+    "max_overvaluation": 0.15,
+    "min_valuation_methods": 2,
+    "min_valuation_confirmations": 2,
+    "dcf_discount_rate": 0.1,
+    "dcf_terminal_growth": 0.025,
+    "technical_filter_version": "support_momentum_v3",
+    "cache_only": false
+  },
+  "price_errors": {},
+  "fundamental_errors": {},
+  "fx_errors": {}
+}

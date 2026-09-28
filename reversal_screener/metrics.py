@@ -292,7 +292,8 @@ def _support_metrics(
     band = max(current * 0.02, atr20 * 0.75)
 
     # A newly formed floor: repeated tests, followed by a close above the zone
-    # and above the preceding session's high.  CRM on 2026-06-26 is this case.
+    # and above the preceding session's high.  The Salesforce regression
+    # fixture in the test suite exercises this branch.
     recent_low = low.iloc[-11:-1]
     if len(recent_low) >= 6:
         floor = float(recent_low.min())
@@ -970,7 +971,7 @@ def fair_value_within_tolerance(
     """
 
     if max_overvaluation < 0:
-        raise ValueError("max_overvaluation non può essere negativo")
+        raise ValueError("max_overvaluation cannot be negative")
     if (
         fair_value is None
         or not np.isfinite(current_price)
@@ -997,7 +998,7 @@ def calculate_valuation_metrics(
 ) -> ValuationMetrics:
     """Estimate fair value with DCF, Peter Lynch and historical EV/Sales.
 
-    The arithmetic mean is reported to mirror the user's reference.  The hard
+    The arithmetic mean is reported for comparison only.  The hard
     filter requires independent model confirmations: undervalued estimates
     always pass, while an overvalued estimate passes only when price is no more
     than ``max_overvaluation`` above its fair value.

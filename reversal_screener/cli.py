@@ -29,58 +29,105 @@ def log(message: str) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="stock-finder",
-        description="Global stock finder: correction + support + rising FCF + profit + 3D OBV divergence.",
+        prog="reversal-screener",
+        description=(
+            "Global reversal screener: correction + support + early bullish momentum turn "
+            "+ rising FCF + profit + 3D OBV divergence + size + multi-model valuation."
+        ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    universe = sub.add_parser("universe", help="Scarica e salva l'universo globale")
-    universe.add_argument("--output", default="results/universe.csv")
+    universe = sub.add_parser(
+        "universe", help="Download and save the global universe (Vanguard FTSE All-World holdings)"
+    )
+    universe.add_argument(
+        "--output",
+        default="results/universe.csv",
+        help="Destination CSV path (default: results/universe.csv)",
+    )
 
-    scan = sub.add_parser("scan", help="Esegue lo screening e genera la top 5")
-    scan.add_argument("--universe", help="CSV custom; default: holdings Vanguard FTSE All-World")
-    scan.add_argument("--output", default="results")
-    scan.add_argument("--top", type=int, default=5)
-    scan.add_argument("--batch-size", type=int, default=80)
-    scan.add_argument("--workers", type=int, default=6)
-    scan.add_argument("--max-symbols", type=int, default=0, help="0 = nessun limite")
+    scan = sub.add_parser("scan", help="Run the screen and write the top-N reports")
+    scan.add_argument(
+        "--universe", help="Custom universe CSV (default: Vanguard FTSE All-World holdings)"
+    )
+    scan.add_argument(
+        "--output", default="results", help="Output directory (default: results)"
+    )
+    scan.add_argument(
+        "--top", type=int, default=5, help="Maximum number of stocks to report (default: 5)"
+    )
+    scan.add_argument(
+        "--batch-size", type=int, default=80, help="Symbols per price request batch (default: 80)"
+    )
+    scan.add_argument(
+        "--workers", type=int, default=6, help="Concurrent download workers (default: 6)"
+    )
+    scan.add_argument(
+        "--max-symbols",
+        type=int,
+        default=0,
+        help="Only scan the first N symbols of the universe (0 = no limit)",
+    )
     scan.add_argument(
         "--min-weight",
         type=float,
         default=0.0,
-        help="Peso minimo percentuale nell'ETF proxy (default 0)",
+        help="Minimum weight (in percent) in the proxy ETF (default: 0)",
     )
     scan.add_argument(
         "--min-market-cap-usd",
         type=float,
         default=10_000_000_000.0,
-        help="Market cap minima in USD (default: 10 miliardi)",
+        help="Minimum market cap in USD (default: 10 billion)",
     )
     scan.add_argument(
         "--max-overvaluation",
         type=float,
         default=0.15,
         help=(
-            "Sopravvalutazione massima ammessa per ogni metodo, misurata come "
-            "prezzo/fair value - 1 (default: 0.15)"
+            "Maximum overvaluation tolerated by each valuation method, measured as "
+            "price / fair value - 1 (default: 0.15)"
         ),
     )
-    scan.add_argument("--min-valuation-methods", type=int, default=2)
-    scan.add_argument("--min-valuation-confirmations", type=int, default=2)
-    scan.add_argument("--dcf-discount-rate", type=float, default=0.10)
-    scan.add_argument("--dcf-terminal-growth", type=float, default=0.025)
+    scan.add_argument(
+        "--min-valuation-methods",
+        type=int,
+        default=2,
+        help="Minimum number of valuation methods that must be computable (default: 2)",
+    )
+    scan.add_argument(
+        "--min-valuation-confirmations",
+        type=int,
+        default=2,
+        help="Minimum number of methods within the overvaluation tolerance (default: 2)",
+    )
+    scan.add_argument(
+        "--dcf-discount-rate",
+        type=float,
+        default=0.10,
+        help="Cost of equity used by the DCF (default: 0.10)",
+    )
+    scan.add_argument(
+        "--dcf-terminal-growth",
+        type=float,
+        default=0.025,
+        help="Terminal growth rate used by the DCF (default: 0.025)",
+    )
     scan.add_argument(
         "--cache-only",
         action="store_true",
-        help="Non effettua richieste di rete; usa solo cache OHLCV v3 esatte fino a 24 ore",
+        help=(
+            "Make no network price requests; use only exact OHLCV v3 caches "
+            "up to 24 hours old"
+        ),
     )
     return parser
 
 
 def run_universe(output: str) -> int:
-    log("Scarico holdings Vanguard FTSE All-World…")
+    log("Downloading Vanguard FTSE All-World holdings…")
     members = fetch_vanguard_ftse_all_world()
     path = save_universe_csv(members, output)
-    log(f"Salvati {len(members):,} titoli in {path}")
+    log(f"Saved {len(members):,} securities to {path}")
     return 0
 
 
@@ -93,10 +140,10 @@ def run_scan(args: argparse.Namespace) -> int:
     else:
         cached_universe = output_dir / "universe.csv"
         if cached_universe.exists() and time.time() - cached_universe.stat().st_mtime < 12 * 3600:
-            log("Riprendo lo snapshot universo dal checkpoint…")
+            log("Resuming the universe snapshot from the checkpoint…")
             members = load_universe_csv(cached_universe)
         else:
-            log("Scarico l'universo globale Vanguard FTSE All-World…")
+            log("Downloading the global Vanguard FTSE All-World universe…")
             members = fetch_vanguard_ftse_all_world()
         source = "Vanguard FTSE All-World UCITS ETF holdings"
         save_universe_csv(members, output_dir / "universe.csv")
@@ -105,8 +152,8 @@ def run_scan(args: argparse.Namespace) -> int:
     if args.max_symbols > 0:
         members = members[: args.max_symbols]
     if not members:
-        raise RuntimeError("L'universo è vuoto dopo i filtri")
-    log(f"Universo analizzato: {len(members):,} simboli")
+        raise RuntimeError("The universe is empty after filtering")
+    log(f"Universe to scan: {len(members):,} symbols")
 
     provider = YahooFinanceProvider(
         batch_size=args.batch_size,
@@ -138,7 +185,7 @@ def run_scan(args: argparse.Namespace) -> int:
         preliminary = set(checkpoint["symbols"])
         spark_errors = checkpoint.get("spark_errors", {})
         close_series_count = int(checkpoint.get("close_series_count", 0))
-        log("Riprendo il pre-filtro prezzi dal checkpoint…")
+        log("Resuming the price pre-filter from the checkpoint…")
     else:
         close_history, spark_errors = provider.download_close_history(
             [member.symbol for member in members], progress=log
@@ -164,8 +211,8 @@ def run_scan(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
     log(
-        f"Pre-filtro correzione: {len(preliminary):,} titoli su "
-        f"{close_series_count:,} serie analizzabili"
+        f"Correction pre-filter: {len(preliminary):,} symbols out of "
+        f"{close_series_count:,} usable series"
     )
     recent_chart_errors = {}
     previous_diagnostics = {}
@@ -185,11 +232,11 @@ def run_scan(args: argparse.Namespace) -> int:
     price_symbols = preliminary - set(recent_chart_errors)
     if recent_chart_errors:
         log(
-            f"Salto {len(recent_chart_errors):,} errori chart già verificati nelle "
-            "ultime 12 ore"
+            f"Skipping {len(recent_chart_errors):,} chart errors already seen in the "
+            "last 12 hours"
         )
     if args.cache_only:
-        log("Modalità cache-only: nessuna richiesta prezzo di rete…")
+        log("Cache-only mode: no network price requests…")
         prices, chart_errors = provider.load_cached_prices(
             price_symbols, progress=log
         )
@@ -217,7 +264,7 @@ def run_scan(args: argparse.Namespace) -> int:
     ]
     if low_refresh and not args.cache_only:
         log(
-            f"Confermo High/Low OHLC per {len(low_refresh):,} potenziali setup su supporto…"
+            f"Confirming OHLC highs/lows for {len(low_refresh):,} potential support setups…"
         )
         exact_prices, refresh_errors = provider.download_prices(
             low_refresh, progress=log, refresh=True
@@ -246,8 +293,8 @@ def run_scan(args: argparse.Namespace) -> int:
         )
     }
     log(
-        f"Filtro tecnico: {len(technical_pass):,} setup supporto + momentum + OBV validi su "
-        f"{len(technical):,} serie analizzabili"
+        f"Technical filter: {len(technical_pass):,} valid support + momentum + OBV setups "
+        f"out of {len(technical):,} usable series"
     )
 
     recent_fundamental_errors = {
@@ -269,8 +316,8 @@ def run_scan(args: argparse.Namespace) -> int:
             valuation_fetch_symbols.append(symbol)
     if recent_fundamental_errors:
         log(
-            f"Salto {len(recent_fundamental_errors):,} errori fondamentali già "
-            "verificati nelle ultime 12 ore"
+            f"Skipping {len(recent_fundamental_errors):,} fundamental errors already "
+            "seen in the last 12 hours"
         )
     companies, fundamental_errors = provider.download_fundamentals(
         valuation_fetch_symbols, progress=log
@@ -282,8 +329,8 @@ def run_scan(args: argparse.Namespace) -> int:
         if company.fundamental.fcf_pass and company.fundamental.profit_pass
     }
     log(
-        f"Filtro qualità: {len(quality_companies):,} titoli con FCF in crescita "
-        "e utile TTM positivo"
+        f"Quality filter: {len(quality_companies):,} companies with rising FCF "
+        "and positive TTM net income"
     )
     currencies = set()
     for company in quality_companies.values():
@@ -310,8 +357,8 @@ def run_scan(args: argparse.Namespace) -> int:
         value.size_pass and value.valuation_pass for value in valuations.values()
     )
     log(
-        f"Filtro dimensione: {size_count:,}/{len(valuations):,} sopra "
-        f"${args.min_market_cap_usd / 1e9:.1f}B; valutazione entro soglia: "
+        f"Size filter: {size_count:,}/{len(valuations):,} at or above "
+        f"${args.min_market_cap_usd / 1e9:.1f}B; valuation within tolerance: "
         f"{valuation_count:,}"
     )
     member_map = {member.symbol: member for member in members}
@@ -376,7 +423,7 @@ def run_scan(args: argparse.Namespace) -> int:
         json.dumps(diagnostics, indent=2), encoding="utf-8"
     )
     if scored.empty:
-        log("Nessun titolo supera tutti i filtri con i dati disponibili.")
+        log("No stock passes every filter with the available data.")
     else:
         columns = [
             "rank",
@@ -402,7 +449,7 @@ def run_scan(args: argparse.Namespace) -> int:
             "acceptable_methods",
         ]
         print(scored.head(args.top)[columns].to_string(index=False), flush=True)
-    log(f"Report HTML: {reports['html']}")
+    log(f"HTML report: {reports['html']}")
     return 0
 
 
@@ -414,10 +461,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_universe(args.output)
         return run_scan(args)
     except KeyboardInterrupt:
-        log("Interrotto.")
+        log("Interrupted.")
         return 130
     except Exception as exc:
-        print(f"Errore: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"Error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
 

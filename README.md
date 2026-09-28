@@ -1,217 +1,302 @@
-# Stock Finder globale
+# Global Reversal Screener
 
-Scanner quantitativo che esplora una proxy ampia del FTSE All-World e restituisce fino a cinque titoli che rispettano **tutti** questi filtri:
+A strict, auditable stock screener that looks for quality companies turning up from a correction across a global FTSE All-World universe.
 
-1. correzione significativa: rendimento a 63 sedute ≤ −5% oppure drawdown dal massimo trimestrale ≥ 12%;
-2. free cash flow TTM positivo e in crescita;
-3. utile netto TTM positivo;
-4. prezzo vicino a un supporto storico oppure recupero confermato di una base emergente;
-5. inversione iniziale del momentum: RSI(14) bullish failure swing completato e breakout del massimo delle cinque sedute precedenti;
-6. divergenza rialzista OBV sul timeframe 3D;
-7. market cap almeno pari a 10 miliardi USD (configurabile);
-8. valutazione confermata da almeno due metodi: la sottovalutazione passa
-   sempre, mentre è ammessa una sopravvalutazione massima del 15%.
+[![checks](https://github.com/DavideWasTaken/Global-Reversal-Screener/actions/workflows/checks.yml/badge.svg)](https://github.com/DavideWasTaken/Global-Reversal-Screener/actions/workflows/checks.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Se meno di cinque società superano le soglie, il report mostra meno di cinque nomi: il programma non allenta i filtri per riempire la classifica.
+## What it does
 
-## Universo
+The screener scans a broad proxy of the FTSE All-World index (the equity
+holdings of the Vanguard FTSE All-World UCITS ETF, several thousand stocks). It
+returns **at most five** stocks that pass **every** hard gate below at the same
+time: a significant correction, price at support, an early bullish momentum
+turn, 3D on-balance-volume accumulation, rising free cash flow, positive
+earnings, a minimum size and a valuation confirmed by at least two independent
+models.
 
-Di default il programma scarica le partecipazioni azionarie correnti del **Vanguard FTSE All-World UCITS ETF (portafoglio 9679)**. È una proxy ampia e riproducibile dell'indice FTSE All-World: l'elenco ufficiale completo dell'indice è un dataset FTSE Russell con licenza, mentre l'ETF usa campionamento rappresentativo.
+Filters are never loosened to fill the list. If only one stock qualifies, the
+report shows one stock. If none qualify, it says so.
 
-È possibile passare un CSV personalizzato con le colonne `yahoo_symbol`, `name`, `country`, `sector`, `weight_pct`. Se manca `yahoo_symbol`, il programma prova a costruirlo da `ticker` + `country`.
+For each scan it writes an HTML dashboard, JSON and CSV exports, a Markdown
+summary of the gate funnel and a diagnostics file listing every data error.
 
-## Supporti e basi emergenti
+## The gates
 
-Il vecchio requisito di tre mesi di discesa continua è stato sostituito da una
-correzione ampia usata come pre-filtro. Il gate tecnico vero richiede uno dei
-due setup seguenti:
+All eight gates are hard filters, applied before any ranking.
 
-- **supporto storico:** almeno due pivot low distanti almeno 15 sedute, raccolti
-  in una zona larga `max(2% del prezzo, 0,75 × ATR20)`; il prezzo deve trovarsi
-  tra −0,5 e +1 ATR dal livello e il supporto non deve essere rotto da due
-  chiusure recenti;
-- **base emergente recuperata:** almeno tre test negli ultimi dieci giorni,
-  distribuiti su almeno tre sedute, seguiti da una chiusura sopra la zona e
-  sopra il massimo della seduta precedente. Il recupero non può estendersi
-  oltre 1,5 ATR dal minimo della base.
+| # | Gate | Rule |
+|---|---|---|
+| 1 | Significant correction | 63-session return ≤ −5% **or** drawdown from the 63-session high ≥ 12% |
+| 2 | Rising free cash flow | TTM free cash flow > 0 and above the previous (overlapping) TTM window |
+| 3 | Profitability | TTM net income > 0 |
+| 4 | Support | Price near a historical support **or** a confirmed reclaim of an emerging base (see below) |
+| 5 | Early bullish momentum turn | Completed Wilder RSI(14) bottom failure swing **and** a close above the previous five-session high, still valid for up to five sessions |
+| 6 | 3D OBV bullish divergence | On three-calendar-day bars: positive OBV slope over the last 20 bars while the stock is in a correction, **or** a confirmed swing divergence on the last three bars |
+| 7 | Size | Market cap ≥ $10B in USD (configurable with `--min-market-cap-usd`) |
+| 8 | Valuation | At least two of three fair-value methods available and at least two within the overvaluation tolerance (see [Valuation rule](#valuation-rule)) |
 
-Il secondo setup riconosce un nuovo pavimento senza chiamarlo falsamente
-“supporto storico”. Entrambi richiedono anche la conferma OBV descritta sotto.
+### Support
 
-## Ritorno del momentum bullish
+One of two setups is required:
 
-Lo scanner distingue un'**inversione iniziale** da un trend rialzista già
-maturo. L'inversione iniziale, usata come filtro rigido, richiede una struttura
-multi-seduta e una conferma di prezzo:
+- **Historical support:** at least two pivot lows at least 15 sessions apart,
+  clustered in a band of `max(2% of price, 0.75 × ATR20)`. Price must sit
+  between −0.5 and +1 ATR from the level, and fewer than two of the last five
+  closes may be more than 1 ATR below it.
+- **Reclaimed emerging base:** at least three tests of a floor in the previous
+  ten sessions, spread over at least three sessions, followed by a close above
+  the zone and above the previous session's high. The reclaim may not extend
+  more than 1.5 ATR above the base low.
 
-1. RSI di Wilder a 14 sedute forma un primo minimo ≤ 30;
-2. rimbalza sopra 30 creando un massimo intermedio;
-3. corregge con un secondo minimo più alto e ancora sopra 30;
-4. supera il massimo RSI intermedio;
-5. nella stessa seduta il prezzo chiude sopra il massimo delle cinque sedute
-   precedenti.
+The second setup recognises a new floor without pretending it is a long-standing
+support.
 
-Il segnale rimane valido per un massimo di cinque sedute, purché il prezzo non
-torni sotto il livello di breakout e l'RSI resti sopra il secondo minimo del
-failure swing. Il campo `momentum_signal_age` indica l'età del segnale; in CRM
-vale zero perché la conferma avviene proprio il 26 giugno.
+### Momentum turn
 
-Volume relativo, posizione della chiusura nel range, ROC5 e miglioramento
-dell'istogramma MACD contribuiscono allo score e alla diagnostica, ma non sono
-ulteriori gate: supporto e OBV forniscono già conferme indipendenti.
+The momentum gate distinguishes an **early reversal** from an already mature
+uptrend. It requires:
 
-La struttura è il *bottom failure swing* descritto dalla
+1. Wilder RSI(14) makes a first low ≤ 30;
+2. RSI rebounds above 30, forming an intermediate peak;
+3. RSI pulls back to a higher second low that stays above 30;
+4. RSI crosses above the intermediate peak;
+5. in the same session, price closes above the high of the previous five sessions.
+
+The signal remains valid for up to five sessions as long as price stays above
+the breakout level and RSI stays above the second low. `momentum_signal_age`
+reports how many sessions ago it fired.
+
+This is the RSI *bottom failure swing* described by the
 [CMT Association](https://cmtassociation.org/technically_speaking/technically-speaking-december-2011/)
-e nella guida RSI di
-[Fidelity](https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI).
-È una definizione auditabile del segnale, non una garanzia di rendimento.
+and in
+[Fidelity's RSI guide](https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI).
 
-Il campo `bullish_regime_pass` è invece una diagnostica più lenta e severa:
-RSI ≥ 50, linea MACD sopra il segnale e prezzo sopra EMA20. Non è un gate,
-perché confermerebbe il movimento più tardi e avrebbe escluso CRM nel giorno di
-calibrazione. Un singolo rialzo giornaliero non è sufficiente.
+Relative volume, close location within the daily range, ROC(5) and MACD
+histogram improvement feed the score and the diagnostics, but are not extra
+gates. `bullish_regime_pass` (RSI ≥ 50, MACD above its signal line, price above
+a rising EMA20) is a slower diagnostic flag and is not a gate either.
 
-## Divergenza OBV 3D
+### 3D OBV divergence
 
-Le barre 3D sono finestre di **tre giorni di calendario**, ancorate all'epoch Unix, coerenti con il riferimento CRM del 26 giugno 2026. Il filtro passa in uno dei due casi:
+3D bars are **three-calendar-day** windows anchored to the Unix epoch, built in
+the exchange's local time zone; empty weekend/holiday bins are dropped. The
+gate passes when either:
 
-- la pendenza OBV sulle ultime 20 barre 3D è positiva mentre la pendenza del prezzo è negativa; oppure
-- nelle ultime tre barre si verifica una swing divergence confermata: nuovo minimo del prezzo, minimo crescente dell'OBV e successiva conferma di prezzo e OBV.
+- the (z-scored) OBV slope over the last 20 bars is positive: combined with the
+  correction gate, OBV is rising while price has fallen; or
+- the last three bars show a confirmed swing divergence: a lower price low with a
+  higher OBV, followed by a bar where both close and OBV rise.
 
-Il secondo caso evita che una regressione lunga nasconda un'accumulazione recente e netta.
+The second clause keeps a long regression from hiding sharp, recent accumulation.
 
-## Valutazione
+## Valuation rule
 
-Il programma calcola tre fair value nella stessa unità del prezzo quotato:
+Three fair values are computed and expressed in the same unit as the quoted price:
 
-| Metodo | Implementazione |
+| Method | Implementation |
 |---|---|
-| DCF (FCFE) | FCF TTM proiettato per 5 anni, crescita normalizzata e limitata al 12%, decadimento verso il 2,5%, costo dell'equity 10%. Poiché `OCF − CapEx` è trattato come cash flow per l'equity, il debito non viene sottratto una seconda volta. Il metodo è valido solo se almeno 2 degli ultimi 3 FCF annuali sono positivi. |
-| Peter Lynch | Utile TTM × fair P/E; il fair P/E deriva dalla crescita EPS annuale mediana ed è limitato a 5–20. Non applicabile con crescita EPS non positiva. |
-| EV / Sales | Mediana dell'EV/Sales storico della stessa società, applicata ai ricavi TTM; dal valore d'impresa implicito vengono sottratti debito e aggiunta cassa. |
+| DCF (FCFE) | TTM free cash flow projected for 5 years; growth is normalised, capped at 12% and fades towards 2.5% terminal growth; 10% cost of equity. Because `OCF − CapEx` is treated as cash flow to equity, debt is not subtracted a second time. Only valid if at least 2 of the last 3 annual FCF values are positive. |
+| Peter Lynch | TTM net income × fair P/E, where the fair P/E is the median annual EPS growth (in percent) clamped to 5–20. Not applicable when EPS growth is not positive. |
+| EV / Sales | The company's own median historical EV/Sales multiple applied to TTM revenue; debt is subtracted and cash added to reach equity value. |
 
-La **media aritmetica** è esportata per confronto con il riferimento mostrato dall'utente; la **mediana**, più resistente agli outlier, viene usata nel report e nello scoring. Per il filtro rigido ogni metodo viene invece verificato separatamente con questa regola:
+Each method is checked on its own:
 
 ```text
-prezzo / fair value − 1 ≤ 15%
+price / fair value − 1 ≤ 15%
 ```
 
-Un metodo passa sempre quando il titolo è sottovalutato (`prezzo ≤ fair value`). Se il prezzo è superiore al fair value, passa soltanto fino al 15% di sopravvalutazione: per esempio, con fair value 100 sono ammessi prezzi fino a 115. Un titolo entra nel ranking solo se:
+A method always confirms when the stock is undervalued (`price ≤ fair value`).
+When price is above fair value, it confirms only up to 15% overvaluation: with a
+fair value of 100, prices up to 115 are accepted. A stock is eligible only if at
+least **2** methods are available and at least **2** confirm. The tolerance and
+both counts are configurable (`--max-overvaluation`,
+`--min-valuation-methods`, `--min-valuation-confirmations`).
 
-- sono disponibili almeno 2 metodi;
-- almeno 2 metodi rispettano la tolleranza del 15%;
-- la market cap convertita in USD supera la soglia.
+All amounts are converted to USD with current Yahoo FX rates. The ratio of fair
+equity value to market cap is then applied to the listing price, which avoids
+errors from ADRs, share classes and prices quoted in cents.
 
-Gli importi sono convertiti in USD con cambi Yahoo correnti. Il rapporto tra fair equity value e market cap viene poi applicato al prezzo della quotazione: questo riduce gli errori dovuti ad ADR, classi azionarie e prezzi espressi in centesimi.
+The report shows the **median** of the available fair values as the consensus;
+the arithmetic mean is exported in the CSV/JSON for comparison.
 
 ## Scoring
 
-Gli otto filtri sono rigidi e vengono applicati prima del ranking. I segnali delle sole finaliste diventano percentili:
+Stocks that pass all gates are ranked by percentile scores computed among the
+finalists only:
 
-| Blocco | Peso | Segnale |
+| Block | Weight | Signal |
 |---|---:|---|
-| Correzione | 10% | rendimento 3 mesi, drawdown e pendenza logaritmica a 63 sedute |
-| Supporto | 15% | vicinanza normalizzata per ATR, numero di test e recupero della base |
-| Momentum | 10% | RSI failure swing, breakout a 5 sedute e qualità prezzo/volume del breakout |
-| Crescita FCF | 25% | FCF TTM corrente vs finestra TTM precedente |
-| Redditività | 10% | margine netto TTM e trimestri profittevoli |
-| Divergenza OBV | 10% | pendenza OBV o swing divergence confermata su barre 3D |
-| Valutazione | 20% | upside del fair value mediano e quota di metodi entro tolleranza |
+| Correction | 10% | 3-month return and 63-session log-price slope |
+| Support | 15% | ATR-normalised distance, number of tests, base reclaim |
+| Momentum | 10% | RSI failure swing, 5-session breakout, breakout volume and close quality, MACD histogram improvement |
+| FCF growth | 25% | Current vs previous TTM free cash flow |
+| Profitability | 10% | TTM net margin and number of profitable quarters |
+| OBV divergence | 10% | OBV slope or confirmed swing divergence on 3D bars |
+| Valuation | 20% | Upside to the consensus fair value and share of methods within tolerance |
 
-La dimensione resta un filtro e non riceve punti: in questo modo le mega-cap non vengono favorite solo perché più grandi.
+Size is a gate only and earns no points, so mega-caps are not favoured just for being large.
 
-## Calibrazione CRM · 26 giugno 2026
+## Universe
 
-Il caso Salesforce è riprodotto senza look-ahead sui dati disponibili a quella data:
+By default the screener downloads the current equity holdings of the
+**Vanguard FTSE All-World UCITS ETF (portfolio 9679)**. This is a broad,
+reproducible proxy for the FTSE All-World index: the official constituent list
+is a licensed FTSE Russell dataset, and the ETF uses representative sampling.
+Local tickers are mapped to Yahoo Finance symbols using the listing country.
 
-- close 158,37 USD; rendimento 3 mesi circa −14,7%;
-- base emergente circa 149,80 USD, cinque test e recupero a +0,99 ATR;
-- RSI failure swing: 29,851 → 33,733 → 31,767 → 41,246;
-- close 158,37 sopra il massimo delle cinque sedute precedenti di 157,06; volume 1,34× la mediana a 20 sedute;
-- inversione iniziale 2/2 conferme; regime bullish maturo non ancora confermato;
-- swing 3D: low 146,32 sotto 149,80, ma OBV più alto di 41,22 milioni; conferma al 26 giugno;
-- FCF TTM 14,661 miliardi USD contro 14,402 miliardi; utile TTM circa 8,023 miliardi;
-- market cap stimata circa 129,7 miliardi USD.
+You can pass your own universe CSV with `--universe`. Recognised columns:
+`yahoo_symbol` (or `ticker` + `country`, from which the Yahoo symbol is built),
+`name`, `country`, `sector` and `weight_pct`. See
+[`examples/sample_universe.csv`](examples/sample_universe.csv).
 
-Fonti primarie: [Salesforce FY26](https://www.sec.gov/Archives/edgar/data/1108524/000110852426000056/crm-q4fy26xexhibit991.htm), [Salesforce Q1 FY27](https://www.sec.gov/Archives/edgar/data/1108524/000110852426000125/crm-q1fy27xexhibit991.htm), [10-Q al 30 aprile 2026](https://www.sec.gov/Archives/edgar/data/1108524/000110852426000127/crm-20260430.htm). Il test automatico include la sequenza delle ultime barre 3D usata per la calibrazione.
+## Install
 
-## Installazione
-
-Richiede Python 3.10+.
-
-Linux/macOS:
+Requires Python 3.10+.
 
 ```bash
+git clone https://github.com/DavideWasTaken/Global-Reversal-Screener.git
+cd Global-Reversal-Screener
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e .                 # or: pip install -e ".[dev]" to include pytest
 ```
 
-Windows PowerShell (non richiede l'attivazione dell'ambiente virtuale):
+The only runtime dependencies are `numpy` and `pandas`; all data is fetched
+with the Python standard library.
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install pytest
-.\.venv\Scripts\python.exe -m pytest -q
-```
+## Usage
 
-## Esecuzione
+The package installs a `reversal-screener` command; `python -m reversal_screener`
+is equivalent.
 
-Scansione completa e report:
+Full scan, writing reports to `results/`:
 
 ```bash
-python -m stock_finder scan --output results --top 5
+reversal-screener scan --output results --top 5
 ```
 
-Su Windows, senza attivare la virtualenv:
-
-```powershell
-.\.venv\Scripts\python.exe -m stock_finder scan --output results --top 5
-```
-
-Tolleranza di sopravvalutazione più severa (la market cap minima resta $10B):
+Stricter overvaluation tolerance (10% instead of 15%):
 
 ```bash
-python -m stock_finder scan --max-overvaluation 0.10
+reversal-screener scan --max-overvaluation 0.10
 ```
 
-Test rapido sui primi 300 titoli:
+Lower size threshold ($5B instead of $10B):
 
 ```bash
-python -m stock_finder scan --output results-quick --max-symbols 300
+reversal-screener scan --min-market-cap-usd 5e9
 ```
 
-Chiusura riproducibile senza nuove richieste di rete, usando soltanto cache
-OHLCV v3 esatte e recenti:
+Quick test run on the first 300 symbols of the universe:
 
 ```bash
-python -m stock_finder scan --output results --cache-only
+reversal-screener scan --output results-quick --max-symbols 300
 ```
 
-Universo custom:
+Re-run without any network price requests, using only exact OHLCV caches up to
+24 hours old (for example after the provider starts rate limiting):
 
 ```bash
-python -m stock_finder scan --universe mio_universo.csv --output results
+reversal-screener scan --output results --cache-only
 ```
 
-Output principali:
+Custom universe:
 
-- `top5.html`: dashboard leggibile nel browser;
-- `top5.json`: risultati machine-readable;
-- `all_candidates.csv`: finaliste e metriche complete;
-- `diagnostics.json`: copertura, soglie ed errori dati;
-- `universe.csv`: snapshot dell'universo usato.
+```bash
+reversal-screener scan --universe my_universe.csv --output results
+```
 
-Prezzi, fondamentali e cambi hanno cache versionate. Un run interrotto può riprendere dal pre-filtro dell'universo.
+Download and save the default universe only:
 
-## Limiti
+```bash
+reversal-screener universe --output results/universe.csv
+```
 
-- Gli endpoint pubblici Yahoo non sono un feed istituzionale e possono avere buchi, ritardi, limiti di frequenza o mapping ticker imperfetti.
-- DCF e fair value dipendono fortemente da crescita, tasso di sconto, multiplo storico e valuta. Sono stime, non valori osservabili.
-- L'EV/Sales storico può incorporare un vecchio premio che il mercato non riconoscerà più.
-- FCF è poco informativo per banche e assicurazioni; verificare sempre il settore e i filing.
-- Una divergenza OBV segnala accumulazione relativa ma non garantisce un'inversione.
-- RSI, EMA e MACD sono trasformazioni dello stesso prezzo: le tre conferme riducono il rumore, ma non sono tre fonti indipendenti di informazione.
-- I supporti sono zone statistiche, non prezzi esatti; una base emergente è meno robusta di un supporto storico.
-- Questo è screening quantitativo, non consulenza o raccomandazione finanziaria.
+All `scan` options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--universe PATH` | Vanguard holdings | Custom universe CSV |
+| `--output DIR` | `results` | Output directory |
+| `--top N` | `5` | Maximum number of stocks to report |
+| `--max-symbols N` | `0` | Only scan the first N symbols (0 = no limit) |
+| `--min-weight PCT` | `0` | Minimum weight (percent) in the proxy ETF |
+| `--min-market-cap-usd X` | `10000000000` | Minimum market cap in USD |
+| `--max-overvaluation X` | `0.15` | Overvaluation tolerance per valuation method |
+| `--min-valuation-methods N` | `2` | Minimum number of computable valuation methods |
+| `--min-valuation-confirmations N` | `2` | Minimum number of methods within tolerance |
+| `--dcf-discount-rate X` | `0.10` | DCF cost of equity |
+| `--dcf-terminal-growth X` | `0.025` | DCF terminal growth |
+| `--batch-size N` | `80` | Symbols per price request batch |
+| `--workers N` | `6` | Concurrent download workers |
+| `--cache-only` | off | No network price requests; exact OHLCV caches only |
+
+Run `reversal-screener scan --help` for the same list.
+
+## Output files
+
+A scan writes to the `--output` directory (default `results/`, which is git-ignored):
+
+| File | Content |
+|---|---|
+| `top5.html` | Dashboard with one card per stock: metrics, fair values and score breakdown |
+| `top5.json` | Top-N results with every metric, machine-readable |
+| `all_candidates.csv` | Every stock that passed all gates, with full metrics and scores |
+| `scan_summary.md` | Results table, gate-by-gate funnel counts and active rules |
+| `diagnostics.json` | Stage counts, settings and every price, fundamental and FX error |
+| `universe.csv` | Snapshot of the downloaded universe (default universe only) |
+| `.cache/`, `preliminary.json` | Price, fundamental and FX caches and the pre-filter checkpoint |
+
+The file names stay `top5.*` whatever the value of `--top`. Caches and
+checkpoints let an interrupted scan resume: the universe snapshot and pre-filter
+checkpoint are reused for 12 hours, and symbols that failed in the last 12 hours
+are not retried.
+
+[`examples/sample-output/`](examples/sample-output/) contains the output of an
+offline run on a synthetic six-stock universe, regenerated with:
+
+```bash
+python examples/generate_sample_output.py
+```
+
+That run uses the real scan pipeline with an in-memory data provider. Four demo
+stocks reuse the Salesforce price history from the test fixture, two use
+generated price paths, and all fundamentals are invented. Each demo stock stops
+at a different gate, so only one of them reaches the report.
+
+## Running tests
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
+
+The tests are fully offline. They include a regression fixture
+(`tests/fixtures/crm_2025-12-01_2026-06-26.csv`): Salesforce daily price history
+used to check the RSI failure swing, emerging-base support and 3D OBV divergence
+rules point in time, with no look-ahead. They also run the full scan pipeline
+end to end against the synthetic sample universe.
+
+## Limitations and disclaimer
+
+- **This is a research tool, not investment advice.** Nothing it outputs is a
+  recommendation to buy or sell any security.
+- Data comes from public Yahoo Finance endpoints, which are not an institutional
+  feed. Data may be incomplete, delayed or wrong, requests may be rate limited,
+  and ticker mappings may be imperfect. Failed symbols are recorded in
+  `diagnostics.json` and excluded; missing values are never imputed.
+- DCF and other fair values depend heavily on growth, discount rate, historical
+  multiples and currency. They are estimates, not observable values.
+- A historical EV/Sales multiple can embed a premium the market no longer pays.
+- Free cash flow is not very informative for banks and insurers; always check
+  the sector and the original filings.
+- An OBV divergence signals relative accumulation, not a guaranteed reversal.
+- RSI, EMA and MACD are all transformations of the same price series, so they
+  are not independent sources of information.
+- Supports are statistical zones, not exact prices; an emerging base is less
+  robust than an established support.
+
+## License
+
+[MIT](LICENSE) © 2026 Davide Gaglione

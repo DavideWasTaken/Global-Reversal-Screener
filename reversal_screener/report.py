@@ -86,25 +86,25 @@ def write_reports(
         sector_warning = ""
         if sector == "Financials":
             sector_warning = (
-                '<div class="warning">⚠ FCF/EV-Sales meno comparabili per società finanziarie.</div>'
+                '<div class="warning">⚠ FCF and EV/Sales are less comparable for financial companies.</div>'
             )
         elif sector == "Real Estate":
             sector_warning = (
-                '<div class="warning">⚠ Verificare anche NAV e FFO/AFFO.</div>'
+                '<div class="warning">⚠ Also check NAV and FFO/AFFO.</div>'
             )
         obv_label = (
-            "swing 3D confermato"
+            "3D swing confirmed"
             if row.get("obv_swing_3d_pass")
             else f"slope {float(row['obv_slope_3d_z']):+.3f}"
         )
         support_kind = {
-            "established": "storico",
-            "emerging_reclaim": "base emergente recuperata",
+            "established": "historical",
+            "emerging_reclaim": "reclaimed emerging base",
         }.get(str(row.get("support_kind")), "—")
         momentum_label = (
-            f"{int(row.get('momentum_confirmations') or 0)}/2 conferme"
-            + f" · {int(row.get('momentum_signal_age') or 0)}g fa"
-            + (" · regime bullish" if row.get("bullish_regime_pass") else " · inversione iniziale")
+            f"{int(row.get('momentum_confirmations') or 0)}/2 confirmations"
+            + f" · {int(row.get('momentum_signal_age') or 0)}d ago"
+            + (" · bullish regime" if row.get("bullish_regime_pass") else " · early reversal")
         )
         upside = row.get("upside_to_fair_value")
         valuation_class = (
@@ -120,39 +120,39 @@ def write_reports(
                 <div><span class="symbol">{html.escape(str(row['symbol']))}</span>
                 <span class="country">{html.escape(str(row.get('country') or ''))}</span></div>
                 <h2>{html.escape(str(row.get('name') or row['symbol']))}</h2>
-                <p>{html.escape(sector or 'Settore non disponibile')}</p>{sector_warning}
+                <p>{html.escape(sector or 'Sector not available')}</p>{sector_warning}
               </div>
               <div class="total"><small>Score</small><strong>{float(row['total_score']):.1f}</strong></div>
               <div class="metrics">
-                <div><small>Prezzo</small><strong>{_fmt_price(row.get('last_price'))}</strong></div>
-                <div><small>Rendimento 3 mesi</small><strong class="negative">{_fmt_pct(row['return_3m'])}</strong></div>
-                <div><small>Supporto</small><strong>{_fmt_price(row.get('support_level'))}</strong></div>
-                <div><small>Tipo supporto</small><strong>{support_kind}</strong></div>
-                <div><small>Distanza supporto</small><strong>{float(row.get('support_distance_atr')):+.2f} ATR</strong></div>
+                <div><small>Price</small><strong>{_fmt_price(row.get('last_price'))}</strong></div>
+                <div><small>3-month return</small><strong class="negative">{_fmt_pct(row['return_3m'])}</strong></div>
+                <div><small>Support</small><strong>{_fmt_price(row.get('support_level'))}</strong></div>
+                <div><small>Support type</small><strong>{support_kind}</strong></div>
+                <div><small>Distance from support</small><strong>{float(row.get('support_distance_atr')):+.2f} ATR</strong></div>
                 <div><small>Momentum</small><strong class="positive">{momentum_label}</strong></div>
                 <div><small>RSI 14 / ROC 5d</small><strong>{float(row.get('rsi14')):.1f} / {_fmt_pct(row.get('roc5'))}</strong></div>
                 <div><small>FCF TTM</small><strong>{_fmt_money(row['fcf_ttm'])}</strong></div>
-                <div><small>Crescita FCF</small><strong class="positive">{fcf_label}</strong></div>
-                <div><small>Margine netto TTM</small><strong>{margin}</strong></div>
+                <div><small>FCF growth</small><strong class="positive">{fcf_label}</strong></div>
+                <div><small>TTM net margin</small><strong>{margin}</strong></div>
                 <div><small>Market cap</small><strong>{_fmt_money(row.get('market_cap_usd'))} USD</strong></div>
-                <div><small>Fair value consensus</small><strong class="positive">{_fmt_price(row.get('consensus_fair_value'))}</strong></div>
-                <div><small>Fair value vs prezzo</small><strong class="{valuation_class}">{_fmt_pct(upside)}</strong></div>
+                <div><small>Consensus fair value</small><strong class="positive">{_fmt_price(row.get('consensus_fair_value'))}</strong></div>
+                <div><small>Fair value vs price</small><strong class="{valuation_class}">{_fmt_pct(upside)}</strong></div>
                 <div><small>OBV 3D</small><strong class="positive">{obv_label}</strong></div>
               </div>
               <div class="fair-values">
                 <div><small>DCF (FCFE)</small><strong>{_fmt_price(row.get('dcf_fair_value'))}</strong></div>
                 <div><small>Peter Lynch</small><strong>{_fmt_price(row.get('peter_lynch_fair_value'))}</strong></div>
-                <div><small>EV / Sales storico</small><strong>{_fmt_price(row.get('ev_sales_fair_value'))}</strong></div>
-                <div><small>Metodi entro soglia</small><strong>{int(row.get('acceptable_methods') or 0)}/{int(row.get('valuation_methods') or 0)}</strong></div>
+                <div><small>Historical EV / Sales</small><strong>{_fmt_price(row.get('ev_sales_fair_value'))}</strong></div>
+                <div><small>Methods within tolerance</small><strong>{int(row.get('acceptable_methods') or 0)}/{int(row.get('valuation_methods') or 0)}</strong></div>
               </div>
               <div class="score-grid">
-                <div><span>Correzione</span><b>{float(row['correction_score']):.0f}</b>{_bar(row['correction_score'], colors['correction_score'])}</div>
-                <div><span>Supporto</span><b>{float(row['support_score']):.0f}</b>{_bar(row['support_score'], colors['support_score'])}</div>
+                <div><span>Correction</span><b>{float(row['correction_score']):.0f}</b>{_bar(row['correction_score'], colors['correction_score'])}</div>
+                <div><span>Support</span><b>{float(row['support_score']):.0f}</b>{_bar(row['support_score'], colors['support_score'])}</div>
                 <div><span>Momentum</span><b>{float(row['momentum_score']):.0f}</b>{_bar(row['momentum_score'], colors['momentum_score'])}</div>
                 <div><span>FCF</span><b>{float(row['fcf_score']):.0f}</b>{_bar(row['fcf_score'], colors['fcf_score'])}</div>
-                <div><span>Profitto</span><b>{float(row['profit_score']):.0f}</b>{_bar(row['profit_score'], colors['profit_score'])}</div>
+                <div><span>Profit</span><b>{float(row['profit_score']):.0f}</b>{_bar(row['profit_score'], colors['profit_score'])}</div>
                 <div><span>OBV</span><b>{float(row['obv_score']):.0f}</b>{_bar(row['obv_score'], colors['obv_score'])}</div>
-                <div><span>Valutazione</span><b>{float(row['valuation_score']):.0f}</b>{_bar(row['valuation_score'], colors['valuation_score'])}</div>
+                <div><span>Valuation</span><b>{float(row['valuation_score']):.0f}</b>{_bar(row['valuation_score'], colors['valuation_score'])}</div>
               </div>
             </article>
             """
@@ -162,11 +162,11 @@ def write_reports(
     empty_note = (
         ""
         if cards
-        else '<div class="empty">Nessun titolo supera tutti gli otto filtri con i dati disponibili. Le soglie non vengono allentate per riempire la top 5.</div>'
+        else f'<div class="empty">No stock passes all eight filters with the available data. Thresholds are never loosened to fill the top {top_n}.</div>'
     )
     document = f"""<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stock Finder · Top {top_n}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Global Reversal Screener · Top {top_n}</title>
 <style>
 :root{{--bg:#081018;--card:#101b26;--line:#213244;--text:#edf5fb;--muted:#8ca1b4;--green:#34d399;--red:#fb7185;}}
 *{{box-sizing:border-box}} body{{margin:0;background:radial-gradient(circle at 15% 0,#133046 0,transparent 34%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}}
@@ -184,24 +184,24 @@ main{{max-width:1180px;margin:auto;padding:54px 24px 80px}} header{{display:grid
 @media(max-width:900px){{header{{grid-template-columns:1fr}} .stock-card{{grid-template-columns:44px 1fr 72px;grid-template-areas:'rank identity total' 'metrics metrics metrics' 'fair fair fair' 'scores scores scores'}} .metrics{{grid-template-columns:repeat(2,1fr)}} .summary{{grid-template-columns:repeat(3,1fr)}}}}
 @media(max-width:560px){{main{{padding:34px 15px}} .summary{{grid-template-columns:1fr 1fr}} .stock-card{{padding:18px;gap:14px}} .score-grid,.fair-values{{grid-template-columns:1fr 1fr}}}}
 </style></head><body><main>
-<header><div><div class="eyebrow">Global contrarian value & quality screener</div><h1>Stock Finder<br>Top {top_n}</h1><p>Correzione significativa vicino a supporto, inversione iniziale del momentum, FCF in crescita, utile positivo, conferma OBV 3D, dimensione minima e valutazione multi-metodo entro tolleranza.</p></div>
-<div class="summary"><div><small>Universo</small><strong>{universe_count:,}</strong></div><div><small>Divergenze</small><strong>{technical_count:,}</strong></div><div><small>Qualità</small><strong>{quality_count:,}</strong></div><div><small>≥ ${min_market_cap_usd / 1e9:.0f}B</small><strong>{size_count:,}</strong></div><div><small>Valutazione OK</small><strong>{valuation_count:,}</strong></div></div></header>
-<div class="method"><b>Filtri rigidi:</b> correzione (−5%/3 mesi oppure drawdown −12%), supporto storico vicino o base emergente recuperata, RSI failure swing + breakout del massimo a 5 sedute, OBV 3D, market cap ≥ ${min_market_cap_usd / 1e9:.1f}B, almeno 2 modelli validi e 2 conferme. Ogni metodo conferma se il titolo è sottovalutato oppure se prezzo / fair value − 1 ≤ {max_overvaluation:.0%}. <b>Score:</b> 10% correzione · 15% supporto · 10% momentum · 25% FCF · 10% redditività · 10% OBV · 20% valutazione.</div>
+<header><div><div class="eyebrow">Global contrarian value & quality screener</div><h1>Global Reversal Screener<br>Top {top_n}</h1><p>Significant correction near support, early bullish momentum turn, rising FCF, positive earnings, 3D OBV confirmation, minimum size and multi-method valuation within tolerance.</p></div>
+<div class="summary"><div><small>Universe</small><strong>{universe_count:,}</strong></div><div><small>Technical setups</small><strong>{technical_count:,}</strong></div><div><small>Quality</small><strong>{quality_count:,}</strong></div><div><small>≥ ${min_market_cap_usd / 1e9:.0f}B</small><strong>{size_count:,}</strong></div><div><small>Valuation OK</small><strong>{valuation_count:,}</strong></div></div></header>
+<div class="method"><b>Hard filters:</b> correction (−5% over 3 months or −12% drawdown), nearby historical support or reclaimed emerging base, RSI failure swing + breakout above the 5-session high, 3D OBV, market cap ≥ ${min_market_cap_usd / 1e9:.1f}B, rising TTM FCF, positive TTM net income, at least 2 valid models and 2 confirmations. Each method confirms when the stock is undervalued or when price / fair value − 1 ≤ {max_overvaluation:.0%}. <b>Score:</b> 10% correction · 15% support · 10% momentum · 25% FCF · 10% profitability · 10% OBV · 20% valuation.</div>
 {''.join(cards)}{empty_note}
-<div class="foot">Generato {generated} · Universo: {html.escape(universe_source)} · {data_error_count:,} dati mancanti/errori. Consensus = mediana di DCF FCFE, Peter Lynch semplificato ed EV/Sales storico; la media aritmetica resta nel CSV/JSON per confronto col riferimento. “Fair value vs prezzo” positivo indica sottovalutazione, negativo indica sopravvalutazione. Stime sensibili a crescita, tasso di sconto, valuta e multipli storici. Screening quantitativo, non raccomandazione finanziaria.</div>
+<div class="foot">Generated {generated} · Universe: {html.escape(universe_source)} · {data_error_count:,} missing data points/errors. Consensus = median of DCF (FCFE), simplified Peter Lynch and historical EV/Sales; the arithmetic mean is kept in the CSV/JSON for comparison. A positive “fair value vs price” means undervaluation, a negative one means overvaluation. Estimates are sensitive to growth, discount rate, currency and historical multiples. Quantitative screening only, not investment advice.</div>
 </main></body></html>"""
     html_path.write_text(document, encoding="utf-8")
 
     result_lines = []
     if top.empty:
         result_lines.append(
-            "Nessun titolo supera contemporaneamente tutti i filtri; le soglie "
-            "non sono state allentate per riempire la Top 5."
+            "No stock passes every filter at the same time; thresholds were "
+            f"not loosened to fill the top {top_n}."
         )
     else:
         result_lines.extend(
             [
-                "| Rank | Simbolo | Società | Score | Market cap USD | Fair value |",
+                "| Rank | Symbol | Company | Score | Market cap (USD) | Consensus fair value |",
                 "|---:|---|---|---:|---:|---:|",
             ]
         )
@@ -212,50 +212,45 @@ main{{max-width:1180px;margin:auto;padding:54px 24px 80px}} header{{display:grid
                 f"| {_fmt_price(row.get('consensus_fair_value'))} |"
             )
     cache_note = (
-        "Il run è stato chiuso in modalità cache-only dopo il blocco delle richieste "
-        "live del provider; soltanto serie OHLCV v3 esatte sono state ammesse."
+        "This scan ran in cache-only mode: no network price requests were made and "
+        "only exact OHLCV v3 caches were accepted."
         if cache_only
-        else "Il run ha utilizzato il feed live con le cache compatibili disponibili."
+        else "This scan used the live data feed together with any compatible caches."
     )
-    summary = f"""# Stock Finder — run {generated}
+    summary = f"""# Global Reversal Screener — scan summary
 
-## Risultato
+Generated: {generated}
+
+## Result
 
 {chr(10).join(result_lines)}
 
-## Copertura
+## Coverage
 
-| Fase | Conteggio |
+| Stage | Count |
 |---|---:|
-| Universo | {universe_count:,} |
-| Pre-filtro correzione | {(preliminary_count if preliminary_count is not None else 0):,} |
-| Serie OHLCV esatte | {(price_series_count if price_series_count is not None else 0):,} |
-| Metriche tecniche calcolate | {(technical_metrics_count if technical_metrics_count is not None else 0):,} |
-| Supporto + momentum + OBV | {technical_count:,} |
-| Qualità FCF/utile | {quality_count:,} |
+| Universe | {universe_count:,} |
+| Correction pre-filter | {(preliminary_count if preliminary_count is not None else 0):,} |
+| Exact OHLCV series | {(price_series_count if price_series_count is not None else 0):,} |
+| Technical metrics computed | {(technical_metrics_count if technical_metrics_count is not None else 0):,} |
+| Support + momentum + OBV | {technical_count:,} |
+| FCF/earnings quality | {quality_count:,} |
 | Market cap ≥ ${min_market_cap_usd / 1e9:.0f}B | {size_count:,} |
-| Valutazione entro soglia | {valuation_count:,} |
+| Valuation within tolerance | {valuation_count:,} |
 
-{cache_note} Dati mancanti/errori registrati: {data_error_count:,}.
+{cache_note} Missing data points/errors recorded: {data_error_count:,}.
 
-## Regole attive
+## Active rules
 
-- correzione: rendimento a 63 sedute ≤ −5% oppure drawdown trimestrale ≥ 12%;
-- supporto storico vicino oppure base emergente recuperata;
-- RSI(14) bullish failure swing e breakout del massimo delle cinque sedute precedenti, ancora valido entro cinque sedute;
-- conferma OBV su barre calendar-3D;
-- FCF TTM crescente e utile netto TTM positivo;
-- market cap minima ${min_market_cap_usd / 1e9:.0f}B;
-- almeno due fair value disponibili e due entro la tolleranza di sopravvalutazione del {max_overvaluation:.0%}.
+- correction: 63-session return ≤ −5% or drawdown from the quarterly high ≥ 12%;
+- nearby historical support or reclaimed emerging base;
+- RSI(14) bullish failure swing plus a breakout above the previous five-session high, still valid within five sessions;
+- OBV confirmation on calendar-3D bars;
+- rising TTM free cash flow and positive TTM net income;
+- minimum market cap ${min_market_cap_usd / 1e9:.0f}B;
+- at least two available fair values and two within the {max_overvaluation:.0%} overvaluation tolerance.
 
-## Controllo CRM · 26 giugno 2026
-
-CRM continua a superare il test point-in-time: supporto 149,80 USD, RSI failure swing
-29,851 → 33,733 → 31,767 → 41,246, chiusura 158,37 sopra il massimo precedente
-a cinque sedute di 157,06 e OBV 3D confermato. Era una `bullish_reversal_confirmed`,
-non ancora un `bullish_trend_established`.
-
-Screening quantitativo, non raccomandazione finanziaria.
+Quantitative screening only, not investment advice.
 """
     summary_path.write_text(summary, encoding="utf-8")
     return {

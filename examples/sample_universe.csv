@@ -1,0 +1,7 @@
+yahoo_symbol,name,country,sector,weight_pct
+DEMO1,Demo Reversal Corp,US,Technology,0.50
+DEMO2,Demo Falling Cash Flow Inc,US,Technology,0.40
+DEMO3,Demo Uptrend Holdings,US,Industrials,0.30
+DEMO4,Demo Small Cap Ltd,US,Technology,0.20
+DEMO5,Demo Expensive Growth Inc,US,Technology,0.15
+DEMO6,Demo Falling Knife plc,GB,Consumer Discretionary,0.10

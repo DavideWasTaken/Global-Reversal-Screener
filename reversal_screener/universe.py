@@ -164,7 +164,7 @@ def _post_graphql(variables: dict, timeout: int = 90) -> dict:
         data=body,
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "stock-finder/0.1 (research screener)",
+            "User-Agent": "global-reversal-screener/1.0 (research screener)",
             "X-Consumer-ID": "uk2",
             "Referer": VANGUARD_PRODUCT_URL,
         },

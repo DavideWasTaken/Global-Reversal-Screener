@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from stock_finder.metrics import (
+from reversal_screener.metrics import (
     ValuationInputs,
     calculate_fundamental_metrics,
     calculate_technical_metrics,
@@ -13,7 +13,7 @@ from stock_finder.metrics import (
     three_calendar_day_bars,
     three_session_bars,
 )
-from stock_finder.universe import to_yahoo_symbol
+from reversal_screener.universe import to_yahoo_symbol
 
 
 def test_country_symbol_mapping():

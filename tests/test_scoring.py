@@ -1,10 +1,10 @@
-from stock_finder.metrics import (
+from reversal_screener.metrics import (
     FundamentalMetrics,
     TechnicalMetrics,
     ValuationMetrics,
 )
-from stock_finder.scoring import Candidate, WEIGHTS, score_candidates
-from stock_finder.universe import UniverseMember
+from reversal_screener.scoring import Candidate, WEIGHTS, score_candidates
+from reversal_screener.universe import UniverseMember
 
 
 def _candidate(
